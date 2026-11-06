@@ -45,9 +45,7 @@ function makeMockClient(opts: { updateMatches?: boolean } = {}) {
 }
 
 describe('SupabaseRepository — writes carry the correct familyId', () => {
-  it('upsertUser sends family_id mapped from user.familyId', async () => {
-    const { client, calls } = makeMockClient();
-    const repo = new SupabaseRepository(client);
+  it('upsertUser maps family_id onto the INSERT fallback row', async () => {
     const user: FamilyUser = {
       id: 'user-1',
       familyId: 'fam-42',
@@ -58,11 +56,39 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       createdAt: new Date().toISOString(),
     };
 
+    // Force the INSERT fallback (no existing row matched) — that path carries
+    // the full row, where family_id is mapped from user.familyId.
+    const { client, calls } = makeMockClient({ updateMatches: false });
+    await new SupabaseRepository(client).upsertUser(user);
+
+    expect(calls.map((c) => c.method)).toEqual(['update', 'insert']);
+    expect((calls[1].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertUser UPDATE omits id and family_id — columns `authenticated` cannot update (42501 column-privilege fix, field report 2026-11-06)', async () => {
+    // Migration 0016 revoked table-wide UPDATE on users and re-granted it only
+    // per editable column (name/avatar/photo_url/color/reminders_enabled/
+    // removed_at). Postgres rejects the whole UPDATE when the SET list names a
+    // non-granted column, so a member photo save failed AFTER a successful
+    // Storage upload. The UPDATE must set only editable columns.
+    const { client, calls } = makeMockClient({ updateMatches: true });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'user-1', familyId: 'fam-42', name: 'אבא', avatar: '👨',
+      photoUrl: 'https://cdn.example/a.jpg', color: '#5B8DEF',
+      remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString(),
+    };
+
     await repo.upsertUser(user);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].table).toBe('users');
-    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].method).toBe('update');
+    const payload = calls[0].payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('id');
+    expect(payload).not.toHaveProperty('family_id');
+    // Editable columns are still present.
+    expect(payload.name).toBe('אבא');
+    expect(payload.photo_url).toBe('https://cdn.example/a.jpg');
   });
 
   /**
@@ -117,7 +143,9 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('update');
     expect(calls[0].table).toBe('users');
-    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    // The UPDATE SET omits family_id (see the column-privilege test above);
+    // the row is still targeted by its id via .eq('id', ...).
+    expect((calls[0].payload as any).family_id).toBeUndefined();
   });
 
   it('upsertUser falls back to .insert() when .update() matches zero rows (legacy pre-fix queued create)', async () => {

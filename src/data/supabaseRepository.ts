@@ -462,9 +462,27 @@ export class SupabaseRepository implements Repository {
    * `createUser`'s own documented behavior).
    */
   async upsertUser(user: FamilyUser): Promise<void> {
+    // COLUMN-PRIVILEGE CORRECTION (field report 2026-11-06: a member profile
+    // photo could not be saved — "לא הצלחנו להחליף תמונה"; the Storage upload
+    // actually SUCCEEDED, but persisting photo_url failed). Migration 0016
+    // deliberately revoked table-wide UPDATE on public.users from
+    // `authenticated` and re-granted it only per-column on the editable
+    // profile columns (name, avatar, photo_url, color, reminders_enabled,
+    // removed_at; gamification_enabled via 0052) — id/family_id/role/pin_hash/
+    // auth_user_id are intentionally NOT updatable by the client. Postgres
+    // rejects the ENTIRE update (42501 "permission denied for table users")
+    // when the SET list names any column the role can't update, and
+    // `fromUser()` includes `id` and `family_id`. They never change for an
+    // existing member (id is the WHERE key; family_id is immutable here), so
+    // omit them from the UPDATE SET — the update then touches only granted
+    // columns and the RLS UPDATE policy (self-or-admin, active) still gates
+    // it. INSERT still uses the full row (its own per-column INSERT grants and
+    // admin-only policy apply, exactly as before). Dog photos were unaffected
+    // because `dogs` keeps a table-wide grant.
+    const { id: _id, family_id: _familyId, ...updatable } = fromUser(user);
     const { data, error } = await this.client
       .from('users')
-      .update(fromUser(user))
+      .update(updatable)
       .eq('id', user.id)
       .select('id');
     if (error) throw error;
