@@ -154,7 +154,19 @@ export function HistoryScreen() {
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
   const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
-  const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
+  // Field report 2026-11-06: a 4-day-old unresolved walk still showed the big
+  // ✓בוצע/✕לא בוצע resolution buttons in History. Resolving "did this happen?"
+  // only makes sense while it's still fresh in memory, so offer it only for an
+  // overdue walk from today or yesterday; anything older is already shown as a
+  // ✕ record (the per-row past-pending→skipped display coercion below) and
+  // stays a read-only record with no action. Family-local day, matching that
+  // coercion's own familyDateOnly boundary (not UTC).
+  const resolvableSinceIso = familyDateOnly(new Date(Date.now() - 86400000), family?.timezone);
+  const canResolveWalk = (w: Walk) =>
+    w.status === 'pending' &&
+    isOverdue(w) &&
+    w.date >= resolvableSinceIso &&
+    (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
   // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
   // UTC-anchored cutoff would shift this boundary by a day for anyone
