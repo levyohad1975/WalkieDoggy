@@ -181,6 +181,43 @@ function hasPlannedWalkForEntry(walks: Walk[], entry: ScheduleEntry, familyId: s
   );
 }
 
+/**
+ * A planned walk is generated for a schedule occurrence only when that
+ * occurrence falls at or after the moment its rule began (`rule.createdAt`).
+ *
+ * Field report 2026-11-05: setting up a weekly schedule during onboarding
+ * immediately showed a red "לא בוצע" (not done) note, because generation starts
+ * at the local "today" and today's earlier slots (e.g. 08:00, 14:00) were
+ * already in the past when the family was created that evening — so they were
+ * materialised as overdue walks for times that passed before the family
+ * existed, and polluted History as never-performed misses.
+ *
+ * Gating walk creation by the rule's activation moment fixes this at the
+ * source: an occurrence earlier than when the schedule was set up never becomes
+ * a walk. An established rule's `createdAt` is in the past, so every current and
+ * future occurrence still passes and a genuinely missed slot surfaces exactly as
+ * before. The schedule ENTRY is still generated (rotation stays deterministic);
+ * only the derived walk row is withheld. Missing/invalid `createdAt` fails open
+ * (returns true) so this can never drop a legitimate walk.
+ *
+ * Time is compared in the device-local frame, matching how this module derives
+ * `today` (localDateOnly) — the device setting up the schedule is in the
+ * family's timezone.
+ */
+export function occurrenceAtOrAfterRuleStart(
+  entry: Pick<ScheduleEntry, 'date' | 'time'>,
+  rule: Pick<ScheduleRule, 'createdAt'> | undefined,
+): boolean {
+  if (!rule?.createdAt) return true;
+  const activatedAt = Date.parse(rule.createdAt);
+  if (!Number.isFinite(activatedAt)) return true;
+  const [year, month, day] = entry.date.split('-').map(Number);
+  const [hour, minute] = entry.time.split(':').map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return true;
+  const occurrence = new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+  return occurrence >= activatedAt;
+}
+
 function walkFromEntry(entry: ScheduleEntry, familyId: string): Walk {
   const now = new Date().toISOString();
   return {
@@ -325,6 +362,7 @@ async function loadScheduleForFamily(
       const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
       const generatedWalks = trulyNew
         .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, rule.familyId))
+        .filter((entry) => occurrenceAtOrAfterRuleStart(entry, rule))
         .map((entry) => walkFromEntry(entry, rule.familyId));
       for (const walk of generatedWalks) await repository.saveWalk(walk);
       finalEntries = [...finalEntries, ...trulyNew];
@@ -338,6 +376,12 @@ async function loadScheduleForFamily(
     // already references the canonical schedule-entry id.
     const activeRules = rules.filter((rule) => rule.active);
     const activeRuleIds = new Set(activeRules.map((rule) => rule.id));
+    const rulesById = new Map(rules.map((rule) => [rule.id, rule]));
+    // Same onboarding gate as generation: never (re)create a walk for a slot
+    // that predates its rule's activation. Legacy entries with no rule_id fall
+    // open (occurrenceAtOrAfterRuleStart returns true for an unknown rule).
+    const entryActivationOk = (entry: ScheduleEntry): boolean =>
+      occurrenceAtOrAfterRuleStart(entry, entry.ruleId ? rulesById.get(entry.ruleId) : undefined);
     const walkEntryIds = new Set(
       finalWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
     );
@@ -357,6 +401,7 @@ async function loadScheduleForFamily(
         entry.date >= today &&
         entry.date <= endDate &&
         entryBelongsToActiveRule(entry) &&
+        entryActivationOk(entry) &&
         !walkEntryIds.has(entry.id) &&
         !hasPlannedWalkForEntry(finalWalks, entry, familyId)
     );
@@ -410,6 +455,7 @@ async function loadScheduleForFamily(
       await repository.addScheduleEntries(staleReconciliation.toRegenerate);
       const regeneratedWalks = staleReconciliation.toRegenerate
         .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, familyId))
+        .filter((entry) => entryActivationOk(entry))
         .map((entry) => walkFromEntry(entry, familyId));
       const todayRegeneratedWalks = regeneratedWalks.filter((w) => w.date === today);
       const futureRegeneratedWalks = regeneratedWalks.filter((w) => w.date !== today);
@@ -513,6 +559,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
       const newWalks = trulyNew
         .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, rule.familyId))
+        // Never back-fill a walk for a slot that already passed before this rule
+        // was created (onboarding "לא בוצע" fix — see occurrenceAtOrAfterRuleStart).
+        .filter((entry) => occurrenceAtOrAfterRuleStart(entry, rule))
         .map((entry) => walkFromEntry(entry, rule.familyId));
       // Real-device QA fix — "Save spinner lingers ~10s": this used to be
       // `for (const w of newWalks) await repository.saveWalk(w);` — up to

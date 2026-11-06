@@ -42,7 +42,10 @@ describe('scheduleStore', () => {
       id: 'rule-test-0900',
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
-      time: '09:00',
+      // 18:00 is after the fake "now" (10:00) so today's slot is still ahead of
+      // the rule's createdAt — exercising normal generation, not the onboarding
+      // past-slot gate (covered by scheduleStore.onboardingNoPastWalks.test.ts).
+      time: '18:00',
       label: 'טיול בדיקה',
       daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
       rotationUserIds: ['user-aba', 'user-ima'],
