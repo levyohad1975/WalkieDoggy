@@ -134,7 +134,10 @@ export function WalkRow({
   routeSession,
 }: WalkRowProps) {
   const overdue = isOverdue(walk);
-  const metadataLine = historyCompact ? (walk.isUnplanned ? 'ספונטני' : 'מתוכנן') : walkMetadataLine(walk);
+  // History is grouped under a per-day header, so repeating "מתוכנן" on every
+  // row is noise — surface only the exception ("ספונטני"); a planned walk needs
+  // no label. (Other callers keep the full metadata line.)
+  const metadataLine = historyCompact ? (walk.isUnplanned ? 'ספונטני' : null) : walkMetadataLine(walk);
   const showToggles = !!(onTogglePee || onTogglePoop);
   const completionLine = walkCompletionLine(walk, completedBy, showToggles);
   // BATCH 4 (item F — completedAt UX): History previously showed ONLY the
@@ -169,14 +172,20 @@ export function WalkRow({
           <RtlText style={[styles.time, historyCompact && styles.timeHistory]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
             {walk.scheduledTime}
           </RtlText>
-          <RtlText style={styles.date} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
-            {`${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', {
-              weekday: 'short',
-            })} · ${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', {
-              day: '2-digit',
-              month: '2-digit',
-            })}`}
-          </RtlText>
+          {/* History groups rows under a per-day header that already carries the
+              weekday + date, so the per-row date is redundant there — show it
+              only outside compact history (Home/Schedule), where rows are not
+              day-grouped. */}
+          {historyCompact ? null : (
+            <RtlText style={styles.date} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
+              {`${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', {
+                weekday: 'short',
+              })} · ${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', {
+                day: '2-digit',
+                month: '2-digit',
+              })}`}
+            </RtlText>
+          )}
         </View>
 
         {displayedWalker ? (

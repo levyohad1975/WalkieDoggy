@@ -38,3 +38,16 @@ describe('WalkRow — per-walk pee/poop indicator in History', () => {
     expect(source).toMatch(/eventCounts: \{[\s\S]*?flexShrink: 0/);
   });
 });
+
+describe('WalkRow — History de-duplication (2026-11-06 polish)', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../WalkRow.tsx'), 'utf8');
+
+  it('drops the per-row date in compact history (the day header carries it); keeps it elsewhere', () => {
+    expect(source).toMatch(/historyCompact \? null : \(\s*<RtlText style=\{styles\.date\}/);
+  });
+
+  it('shows no "מתוכנן" label in history — only the "ספונטני" exception', () => {
+    expect(source).toMatch(/historyCompact \? \(walk\.isUnplanned \? 'ספונטני' : null\)/);
+    expect(source).not.toMatch(/historyCompact \? \(walk\.isUnplanned \? 'ספונטני' : 'מתוכנן'\)/);
+  });
+});

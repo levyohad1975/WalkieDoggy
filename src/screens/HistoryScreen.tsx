@@ -473,7 +473,12 @@ export function HistoryScreen() {
               {dailySummary.map(([date, dayWalks]) => (
                 <View key={date} style={styles.dayGroup}>
                   <RtlText style={styles.dayLabel}>
-                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {summarizeWalkEvents(dayWalks).pee} 💧 · {summarizeWalkEvents(dayWalks).poop} 💩
+                    {/* Weekday now lives once in the day header (it used to repeat
+                        on every row's date); "היום" needs no weekday. */}
+                    {date === familyDateOnly(new Date(), family?.timezone)
+                      ? formatHistoryDate(date)
+                      : `${new Date(`${date}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long' })} · ${formatHistoryDate(date)}`}
+                    {' '}- {dayWalks.length} טיולים · {summarizeWalkEvents(dayWalks).pee} 💧 · {summarizeWalkEvents(dayWalks).poop} 💩
                   </RtlText>
                   {dayWalks.map((w) => (
                     <View key={w.id} style={styles.historyItem}>
