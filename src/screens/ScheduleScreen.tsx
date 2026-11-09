@@ -13,6 +13,8 @@ import { EmptyState, ErrorState } from '../components/EmptyState';
 import { EditWalkModal } from '../components/EditWalkModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal';
+import { RoutineGrid } from '../components/RoutineGrid';
+import type { RoutineOp } from '../logic/routineGrid';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
@@ -22,7 +24,6 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
 import { dedupeCanonicalWalks, familyDateOnly, isOverdue } from '../logic/nextWalk';
-import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
@@ -206,6 +207,33 @@ export function ScheduleScreen() {
   // `sortOrder` column itself is left alone (no migration needed; nothing
   // still reads it for ordering, but other code/back-compat may still rely
   // on the column existing).
+  // Runs a routine-grid edit in order (removals before additions — the
+  // database refuses two rules for the same dog, time and day) and stops at
+  // the first failure, which the store already shows as actionError.
+  const applyRoutineOps = async (ops: RoutineOp[]) => {
+    for (const op of ops) {
+      if (op.type === 'delete') {
+        await deleteRule(op.ruleId);
+      } else if (op.type === 'update') {
+        await updateRule(op.ruleId, { daysOfWeek: op.daysOfWeek });
+      } else if (dog) {
+        await addRule({
+          id: generateId('rule'),
+          familyId,
+          dogId: dog.id,
+          time: op.time,
+          daysOfWeek: op.daysOfWeek,
+          rotationUserIds: [op.userId],
+          rotationAnchorDate: toLocalDateOnly(new Date()),
+          sortOrder: rules.length,
+          active: true,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      if (useScheduleStore.getState().actionError) return;
+    }
+  };
+
   const sortedRules = useMemo(() => {
     // Defensive UI de-duplication: legacy/raced writes may have persisted
     // multiple identical recurring slots. A schedule slot is defined by
@@ -413,89 +441,32 @@ export function ScheduleScreen() {
         ) : null}
 
         <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
-          <View style={styles.sectionHeaderRow}>
-            {/*
-              FINAL CORRECTION PASS — Deliverable 3H: removed
-              adjustsFontSizeToFit/minimumFontScale — this is a short,
-              bounded string ("שעות קבועות (N)") with no realistic overflow
-              risk at any phone width; the auto-shrink was an unreviewed
-              leftover, not a real fix for anything, and is exactly the
-              pattern WalkRow's own redesign already established should
-              never be used for this reason (per its own doc comment).
-              numberOfLines alone is enough headroom for the rare case.
-            */}
-            <RtlText style={styles.sectionTitle} numberOfLines={1}>
-              טיולים קבועים ({sortedRules.length})
-            </RtlText>
-            {familyRole === 'admin' ? (
-  <Pressable
-    onPress={() => {
-      setEditingRule(null);
-      setRuleFormVisible(true);
-    }}
-  >
-    <RtlText style={styles.addLink}>+ הוספת טיול קבוע</RtlText>
-  </Pressable>
-) : null}
-          </View>
-
-          {sortedRules.length === 0 ? (
-            <RtlText style={styles.empty}>עדיין לא הוגדרו טיולים קבועים</RtlText>
-          ) : (
-            sortedRules.map((r) => (
-  <View key={r.id} style={styles.ruleRow}>
-    {familyRole === 'admin' ? (
-  <View style={styles.ruleActions}>
-    <Pressable
-      onPress={() => {
-        setEditingRule(r);
-        setRuleFormVisible(true);
-      }}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={`עריכת שעת טיול ${r.time}`}
-    >
-      <RtlText style={styles.ruleActionIcon}>✏️</RtlText>
-    </Pressable>
-
-    <Pressable
-      onPress={() => setDeleteRuleId(r.id)}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={`מחיקת שעת טיול ${r.time}`}
-      accessibilityHint="יוצג אישור לפני מחיקת שעת הטיול"
-    >
-      <RtlText style={styles.ruleActionIcon}>🗑️</RtlText>
-    </Pressable>
-  </View>
-) : null}
-
-    <View style={styles.ruleInfo}>
-      <RtlText style={styles.ruleTime}>
-        {r.time}
-        {r.label ? ` · ${r.label}` : ''}
-      </RtlText>
-
-      {/* RTL polish (final QA round): a long rotation ("דנה → יוסי → מיכל
-          → אורי") used to be forced onto one shrinking line, which on a
-          narrow phone could shrink names down past legibility or truncate
-          into an unreadable ellipsis — a name effectively reduced to
-          "bare dots". Wrapping instead of shrinking/truncating keeps every
-          name fully readable at a consistent size. */}
-      <RtlText style={styles.ruleRotation}>
-        {previewRotation(
-          r.rotationUserIds.map((id) => usersById[id]?.name ?? '?'),
-          r.rotationUserIds.length
-        )}
-      </RtlText>
-      <RtlText style={styles.ruleRotation}>
-        ימים: {r.daysOfWeek.slice().sort((a, b) => a - b).map((day) => ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'][day] ?? '?').join(' · ')}
-      </RtlText>
-    </View>
-  </View>
-))
-
-          )}
+          {/* Owner request 2026-11-09: the routine as one weekly table
+              (times × days) instead of a row per rule — see RoutineGrid and
+              logic/routineGrid.ts. Edits become ordinary rule operations. */}
+          <RoutineGrid
+            rules={sortedRules}
+            users={activeUsers}
+            dogName={dog?.name ?? 'הכלב/ה'}
+            canEdit={familyRole === 'admin'}
+            onApply={applyRoutineOps}
+            onChangeTime={async (oldTime, newTime) => {
+              for (const rule of sortedRules.filter((r) => r.active && r.time === oldTime)) {
+                await updateRule(rule.id, { time: newTime });
+                if (useScheduleStore.getState().actionError) return;
+              }
+            }}
+            onEditRule={(ruleId) => {
+              const rule = rules.find((r) => r.id === ruleId);
+              if (!rule) return;
+              setEditingRule(rule);
+              setRuleFormVisible(true);
+            }}
+            onAddTime={() => {
+              setEditingRule(null);
+              setRuleFormVisible(true);
+            }}
+          />
         </View>
         {range === 'routine' ? null : (
           <Pressable onPress={() => setRange('routine')} style={styles.manageRoutineButton} accessibilityRole="button">

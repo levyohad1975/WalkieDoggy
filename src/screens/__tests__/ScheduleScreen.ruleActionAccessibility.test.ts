@@ -2,30 +2,25 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * QA Guardian sweep (accessibility labels on non-Button Pressable elements):
- * the rule row's edit (✏️) and delete (🗑️) Pressables are emoji-only with no
- * visible text, the same shape as FamilyScreen.tsx's member edit/delete
- * icons, which already carry accessibilityRole/accessibilityLabel for
- * screen readers. This screen's rule-action icons did not. Verifies both now
- * carry a role and a distinguishing label via the source-scan convention
- * this repo uses for RN components it can't render-test directly.
+ * Owner request 2026-11-09: the routine is a weekly grid (RoutineGrid) instead
+ * of rule rows with ✏️/🗑️ icons. Every editable cell and time label is a
+ * button with a label a screen reader can speak (day, time, who walks).
  */
-describe('ScheduleScreen — rule action icon accessibility', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../ScheduleScreen.tsx'), 'utf8');
+describe('ScheduleScreen — routine grid accessibility', () => {
+  const screen = fs.readFileSync(path.resolve(__dirname, '../ScheduleScreen.tsx'), 'utf8');
+  const grid = fs.readFileSync(path.resolve(__dirname, '../../components/RoutineGrid.tsx'), 'utf8');
 
-  it('the edit rule Pressable has accessibilityRole="button" and a distinguishing accessibilityLabel', () => {
-    const editIndex = source.indexOf('setEditingRule(r)');
-    expect(editIndex).toBeGreaterThan(-1);
-    const before = source.slice(Math.max(0, editIndex - 400), editIndex + 200);
-    expect(before).toMatch(/accessibilityRole="button"/);
-    expect(before).toMatch(/accessibilityLabel=\{`עריכת שעת טיול \$\{r\.time\}`\}/);
+  it('ScheduleScreen shows the routine as the grid, editable by admins only', () => {
+    expect(screen).toContain('<RoutineGrid');
+    expect(screen).toContain("canEdit={familyRole === 'admin'}");
   });
 
-  it('the delete rule Pressable has accessibilityRole="button" and a distinguishing accessibilityLabel', () => {
-    const deleteIndex = source.indexOf('setDeleteRuleId(r.id)');
-    expect(deleteIndex).toBeGreaterThan(-1);
-    const around = source.slice(Math.max(0, deleteIndex - 100), deleteIndex + 300);
-    expect(around).toMatch(/accessibilityRole="button"/);
-    expect(around).toMatch(/accessibilityLabel=\{`מחיקת שעת טיול \$\{r\.time\}`\}/);
+  it('each cell says the day, the time and who walks', () => {
+    expect(grid).toContain('accessibilityLabel={`יום ${DAY_LONG_LABELS[day]} ${row.time}: ${cellName(c)}`}');
+    expect(grid).toContain("accessibilityRole={canEdit ? 'button' : undefined}");
+  });
+
+  it('each time label is a button to change or remove that row', () => {
+    expect(grid).toContain('accessibilityLabel={canEdit ? `שינוי או מחיקה של שעת ${row.time}` : row.time}');
   });
 });
