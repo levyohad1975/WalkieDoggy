@@ -124,6 +124,13 @@ export interface Repository {
    */
   upsertUser(user: FamilyUser): Promise<void>;
   /**
+   * Server-confirmed write for a changed profile photo. A Storage upload has
+   * already succeeded by the time this runs, so offline queue acceptance is
+   * not proof the profile URL is persisted. Implementations may omit this for
+   * legacy test adapters; production repositories provide it.
+   */
+  updateUserProfile?(user: FamilyUser): Promise<void>;
+  /**
    * Permanently removes a family member row. NOT used by the app's actual
    * "delete a family member" flow (see deleteFamilyMember below) — kept
    * only for interface completeness. Do not call this for real family-

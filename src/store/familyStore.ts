@@ -403,9 +403,11 @@ if (!familyId) {
   updateUser: async (user: FamilyUser) => {
     if (!guardTestModeMutation()) return;
     const before = get().users.find((u) => u.id === user.id);
+    const photoChanged = Boolean(before && before.photoUrl !== user.photoUrl);
     set((s) => ({ users: s.users.map((u) => (u.id === user.id ? user : u)) }));
     try {
-      await repository.upsertUser(user);
+      if (photoChanged && repository.updateUserProfile) await repository.updateUserProfile(user);
+      else await repository.upsertUser(user);
     } catch (e) {
       // Functional merge against CURRENT state — see setReminderEnabled's
       // catch block above for why a raw `set({ users: prev, ... })` from a

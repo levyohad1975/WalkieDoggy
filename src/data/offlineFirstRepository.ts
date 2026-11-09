@@ -664,6 +664,44 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  /**
+   * Profile-photo URLs must be confirmed by the same remote session that
+   * accepted the Storage upload. Do not report an offline queue item as a
+   * saved profile photo; that can look correct until refresh/new login.
+   */
+  async updateUserProfile(user: FamilyUser): Promise<void> {
+    if (!this.remote) {
+      await this.local.upsertUser(user);
+      return;
+    }
+
+    const previous = this.userWriteTails.get(user.id) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(async () => {
+      if (!(await this.isOnline())) {
+        throw new Error('Network unavailable; profile photo updates require server confirmation');
+      }
+
+      // Finish any older full-profile write first, then discard a retryable
+      // stale copy so it cannot restore the old photo after this confirmed
+      // update. This mirrors upsertUser's ordering for newer online edits.
+      if (await this.queue.hasPendingUpsertUser(user.id)) {
+        await this.queue.flush(this.remote!);
+        await this.queue.discardPendingUpsertUser(user.id);
+      }
+
+      if (this.remote!.updateUserProfile) await this.remote!.updateUserProfile(user);
+      else await this.remote!.upsertUser(user);
+      await this.local.upsertUser(user);
+    });
+
+    this.userWriteTails.set(user.id, current);
+    try {
+      await current;
+    } finally {
+      if (this.userWriteTails.get(user.id) === current) this.userWriteTails.delete(user.id);
+    }
+  }
+
   async deleteUser(userId: string): Promise<void> {
     await this.local.deleteUser(userId);
     if (this.remote) {

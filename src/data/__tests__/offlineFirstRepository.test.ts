@@ -522,6 +522,45 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
   });
 });
 
+describe('OfflineFirstRepository.updateUserProfile — server-confirmed photo persistence', () => {
+  const memberWithPhoto: FamilyUser = {
+    id: 'user-photo', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
+    photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+  };
+
+  it('requires an online server confirmation and does not queue or update local state offline', async () => {
+    const updateUserProfile = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(false, stubRemote({ updateUserProfile }));
+
+    await expect(repo.updateUserProfile(memberWithPhoto)).rejects.toThrow('require server confirmation');
+
+    expect(updateUserProfile).not.toHaveBeenCalled();
+    expect(await repo.pendingSyncCount()).toBe(0);
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([]);
+  });
+
+  it('stores the profile locally only after the remote update confirms success', async () => {
+    const updateUserProfile = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(true, stubRemote({ updateUserProfile }));
+
+    await repo.updateUserProfile(memberWithPhoto);
+
+    expect(updateUserProfile).toHaveBeenCalledWith(memberWithPhoto);
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([memberWithPhoto]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('does not change local profile state if the remote rejects the write', async () => {
+    const denied = Object.assign(new Error('profile update denied'), { code: '42501' });
+    const repo = await makeRepo(true, stubRemote({ updateUserProfile: jest.fn().mockRejectedValue(denied) }));
+
+    await expect(repo.updateUserProfile(memberWithPhoto)).rejects.toBe(denied);
+
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
 describe('OfflineFirstRepository.upsertScheduleRule — confirmed shared-setting persistence', () => {
   it('surfaces an online server rejection instead of queueing an edit that will disappear after refresh', async () => {
     const denied = Object.assign(new Error('new row violates row-level security policy'), { code: '42501' });

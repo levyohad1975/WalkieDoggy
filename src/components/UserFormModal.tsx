@@ -7,8 +7,8 @@ import { colors, userPalette } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
-import { pickAndUploadImage } from '../lib/uploadImage';
-import { useFamilyStore } from '../store/familyStore';
+import { pickAndUploadImage, removeUploadedFamilyPhoto } from '../lib/uploadImage';
+import { memberPhotoErrorMessage, memberProfileErrorMessage, persistUploadedMemberPhoto } from '../lib/memberPhotoSave';
 
 export function shouldRunPendingWebPhotoPick(pendingPhotoPick: boolean, platform: string): boolean {
   return pendingPhotoPick && platform === 'web';
@@ -53,7 +53,6 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
   const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave, onClose });
@@ -76,8 +75,8 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
     setSaveError(null);
     try {
       await onSave({ name: name.trim(), avatar, color, photoUrl });
-    } catch {
-      setSaveError('לא הצלחנו לשמור את הפרטים. השינויים לא אושרו. בדקו את החיבור ונסו שוב.');
+    } catch (error) {
+      setSaveError(memberProfileErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -92,20 +91,33 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       return;
     }
     setUploading(true);
+    let stage: 'upload' | 'profile' = 'upload';
+    let uploadedUrl: string | null = null;
     try {
       const uri = await pickAndUploadImage('users', familyId, editingUser?.id ?? 'new');
       if (uri) {
-        setPhotoUrl(uri);
         // Existing member photo uploads are complete mutations, not drafts.
         // Persist immediately so a refresh cannot discard a successfully
         // uploaded Storage object just because the user did not press the
         // separate form Save button afterwards.
         if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
-          await onSave({ name: name.trim(), avatar, color, photoUrl: uri });
+          uploadedUrl = uri;
+          stage = 'profile';
+          await persistUploadedMemberPhoto(
+            () => onSave({ name: name.trim(), avatar, color, photoUrl: uri }),
+            () => removeUploadedFamilyPhoto(uri, familyId, 'users', editingUser!.id),
+            () => setPhotoUrl(uri),
+          );
+        } else {
+          setPhotoUrl(uri);
         }
+        // Do not display a candidate URL as saved until the profile write has
+        // completed. Existing members roll back to their persisted URL on any
+        // failure; a new member keeps the selected draft until Save.
       }
-    } catch {
-      Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+    } catch (error) {
+      if (uploadedUrl && editingUser) setPhotoUrl(editingUser.photoUrl);
+      Alert.alert('לא הצלחנו לשמור את התמונה', memberPhotoErrorMessage(error, stage));
     } finally {
       setUploading(false);
     }
@@ -115,33 +127,38 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
     if (!shouldRunPendingWebPhotoPick(pendingPhotoPick, Platform.OS)) return;
     setUploading(true);
     const latest = webPhotoSaveRef.current;
-    void (latest.editingUser
-      ? saveUserPhoto(latest.editingUser.id, familyId)
-      : pickAndUploadImage('users', familyId, 'new'))
-      .then((uri) => {
+    let stage: 'upload' | 'profile' = 'upload';
+    let uploadedUrl: string | null = null;
+    void pickAndUploadImage('users', familyId, latest.editingUser?.id ?? 'new')
+      .then(async (uri) => {
         if (!uri) return;
-        setPhotoUrl(uri);
         if (latest.editingUser) {
-          // saveUserPhoto() persists the uploaded image for refresh safety,
-          // but it reads the currently stored member and therefore cannot
-          // include draft name/avatar/color edits still open in this form.
-          // Persist the complete latest draft before closing the hand-off.
-          return Promise.resolve(latest.onSave({
-            name: latest.name.trim(),
-            avatar: latest.avatar,
-            color: latest.color,
-            photoUrl: uri,
-          })).then(() => latest.onClose());
+          uploadedUrl = uri;
+          stage = 'profile';
+          await persistUploadedMemberPhoto(
+            () => latest.onSave({
+              name: latest.name.trim(),
+              avatar: latest.avatar,
+              color: latest.color,
+              photoUrl: uri,
+            }),
+            () => removeUploadedFamilyPhoto(uri, familyId, 'users', latest.editingUser!.id),
+            () => setPhotoUrl(uri),
+          );
+          latest.onClose();
+          return;
         }
+        setPhotoUrl(uri);
       })
-      .catch(() => {
-        Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+      .catch((error) => {
+        if (uploadedUrl && latest.editingUser) setPhotoUrl(latest.editingUser.photoUrl);
+        Alert.alert('לא הצלחנו לשמור את התמונה', memberPhotoErrorMessage(error, stage));
       })
       .finally(() => {
         setUploading(false);
         setPendingPhotoPick(false);
       });
-  }, [pendingPhotoPick, familyId, saveUserPhoto]);
+  }, [pendingPhotoPick, familyId]);
 
   const removePhoto = async () => {
     if (!photoUrl || uploading || removingPhoto) return;

@@ -99,6 +99,35 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect((calls[0].payload as any).photo_url).toBe('https://cdn.example/member.jpg');
   });
 
+  it('updateUserProfile confirms an existing row and never falls through to insert', async () => {
+    const { client, calls } = makeMockClient({ updateMatches: true });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'user-photo', familyId: 'fam-42', name: 'עידן', avatar: '🙂',
+      photoUrl: 'https://cdn.example/member.jpg', color: '#5B8DEF',
+      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    };
+
+    await repo.updateUserProfile(user);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('update');
+    expect((calls[0].payload as any).photo_url).toBe('https://cdn.example/member.jpg');
+  });
+
+  it('rejects an unconfirmed profile update without trying an insert', async () => {
+    const { client, calls } = makeMockClient({ updateMatches: false });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'missing-user', familyId: 'fam-42', name: 'עידן', avatar: '🙂',
+      photoUrl: 'https://cdn.example/member.jpg', color: '#5B8DEF',
+      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    };
+
+    await expect(repo.updateUserProfile(user)).rejects.toThrow('Profile update was not confirmed');
+    expect(calls.map((call) => call.method)).toEqual(['update']);
+  });
+
   it('upsertUser calls .update() (not .upsert()/.insert()) for an existing row — the RLS 42501 fix', async () => {
     const { client, calls } = makeMockClient({ updateMatches: true });
     const repo = new SupabaseRepository(client);

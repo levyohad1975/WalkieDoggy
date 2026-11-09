@@ -466,6 +466,25 @@ export class SupabaseRepository implements Repository {
   }
 
   /**
+   * Strictly update an existing profile for a photo change. Unlike the
+   * backward-compatible queue replay path above, a missing/hidden row must
+   * never fall through to INSERT: the caller uploaded an object for this
+   * existing profile and needs an explicit server confirmation before the
+   * UI can claim success.
+   */
+  async updateUserProfile(user: FamilyUser): Promise<void> {
+    const { data, error } = await this.client
+      .from('users')
+      .update(fromUser(user))
+      .eq('id', user.id)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Profile update was not confirmed: profile is missing or the caller lacks permission');
+    }
+  }
+
+  /**
    * Direct client DELETE on `users` is blocked by RLS as of
    * supabase/migrations/0003_family_admin_roles.sql — this will always fail
    * server-side. Kept only to satisfy the Repository interface; real

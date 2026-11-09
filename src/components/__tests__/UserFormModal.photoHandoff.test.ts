@@ -13,14 +13,15 @@ describe('UserFormModal web photo crop handoff', () => {
     expect(shouldRunPendingWebPhotoPick(true, 'android')).toBe(false);
   });
 
-  it('persists the complete latest web edit draft with the new photo before closing', () => {
+  it('persists the complete latest web edit draft before showing the photo and closing', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../UserFormModal.tsx'), 'utf8');
-    expect(source).toContain('saveUserPhoto(latest.editingUser.id, familyId)');
+    expect(source).toContain("pickAndUploadImage('users', familyId, latest.editingUser?.id ?? 'new')");
+    expect(source).toContain('await persistUploadedMemberPhoto(');
     expect(source).toContain('name: latest.name.trim(),');
     expect(source).toContain('avatar: latest.avatar,');
     expect(source).toContain('color: latest.color,');
     expect(source).toContain('photoUrl: uri,');
-    expect(source).toContain('Promise.resolve(latest.onSave({');
-    expect(source).toContain('})).then(() => latest.onClose());');
+    expect(source).toContain('() => setPhotoUrl(uri),');
+    expect(source).toContain('latest.onClose();');
   });
 });
