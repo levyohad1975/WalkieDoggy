@@ -7,6 +7,7 @@ import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import type { FamilyUser, ScheduleRule } from '../types';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { previewRotation } from '../logic/rotation';
 import {
   DAY_LONG_LABELS,
   DAY_SHORT_LABELS,
@@ -109,7 +110,9 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
   };
 
   const cellName = (c: (typeof rows)[number]['cells'][number]) =>
-    !c ? 'אין טיול' : c.kind === 'rotation' ? 'בתורות' : usersById[c.userId]?.name ?? '?';
+    !c ? 'אין טיול'
+      : c.kind === 'rotation' ? `בתורות: ${previewRotation(c.userIds.map((id) => usersById[id]?.name ?? '?'), c.userIds.length)}`
+      : usersById[c.userId]?.name ?? '?';
 
   return (
     <View style={styles.wrap}>
