@@ -2412,11 +2412,6 @@ export function HomeScreen() {
         walksById={walksById}
         swapRequests={swapRequests}
         timeChangeRequests={timeChangeRequests}
-        routineRequests={routineRequestsForMe}
-        onOpenRoutineRequests={() => {
-          setRequestsInboxVisible(false);
-          navigation.navigate('Schedule', { range: 'routine' });
-        }}
         onApproveSwap={approveSwap}
         onRejectSwap={rejectSwap}
         onApproveTimeChange={approveTimeChange}
@@ -2429,6 +2424,11 @@ export function HomeScreen() {
           navigation.navigate('Settings');
         }}
         onClose={() => setRequestsInboxVisible(false)}
+        routineRequests={routineRequestsForMe}
+        onOpenRoutineRequests={() => {
+          setRequestsInboxVisible(false);
+          navigation.navigate('Schedule', { range: 'routine' });
+        }}
       />
 
       <RemindersModal
