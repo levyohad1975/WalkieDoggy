@@ -192,6 +192,11 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
           </Pressable>
         ) : null}
       </View>
+      {/* Owner report 2026-11-10: a one-off swap (Mon↔Tue 22:00) showed on the
+          week board but not here, which read as a bug. Say what this grid is. */}
+      {rows.length > 0 ? (
+        <RtlText style={styles.hint}>הסידור הקבוע לכל שבוע. החלפות ושינויים חד-פעמיים מופיעים בלוח השבוע.</RtlText>
+      ) : null}
 
       {rows.length === 0 ? (
         <RtlText style={styles.empty}>עדיין לא הוגדרו טיולים קבועים</RtlText>
