@@ -75,6 +75,7 @@ import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackg
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard';
+import { RoutineRequestsHomeCard } from '../components/RoutineRequestsHomeCard';
 import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
@@ -1762,6 +1763,15 @@ export function HomeScreen() {
         {/* Owner request 2026-11-03: a family member's new device waiting for
             the admin's approval (renders nothing otherwise). */}
         <DeviceAccessRequestsCard enabled={isSupabaseConfigured && actualFamilyRole === 'admin' && !personalNotificationsReadOnly} />
+        {/* Owner request 2026-11-10: a permanent routine change request
+            waiting for this member's answer or the admin's approval. */}
+        <RoutineRequestsHomeCard
+          enabled={isSupabaseConfigured && !personalNotificationsReadOnly && effectiveUserId === currentUserId}
+          familyId={familyId}
+          userId={currentUserId}
+          isAdmin={actualFamilyRole === 'admin'}
+          onOpen={() => navigation.navigate('Schedule', { range: 'routine' })}
+        />
         <PendingRequestsCard
           items={actionablePendingRequests}
           usersById={usersById}

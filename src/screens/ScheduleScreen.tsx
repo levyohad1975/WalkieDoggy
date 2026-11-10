@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute, type RouteProp } from '@react-navigation/native';
+import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
@@ -13,8 +15,18 @@ import { EmptyState, ErrorState } from '../components/EmptyState';
 import { EditWalkModal } from '../components/EditWalkModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal';
-import { RoutineGrid } from '../components/RoutineGrid';
-import type { RoutineOp } from '../logic/routineGrid';
+import { RoutineGrid, type RoutineRequestDraft } from '../components/RoutineGrid';
+import { RoutineRequestsList } from '../components/RoutineRequestsList';
+import { planCellAssignment, type RoutineOp } from '../logic/routineGrid';
+import { routineRequestState, routineRequestSteps, type RoutineChangeRequest } from '../logic/routineRequests';
+import {
+  cancelRoutineChangeRequest,
+  createRoutineChangeRequest,
+  decideRoutineChangeRequest,
+  listRoutineChangeRequests,
+  respondRoutineChangeRequest,
+  routineRequestErrorMessage,
+} from '../lib/routineRequests';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
@@ -130,6 +142,12 @@ export function ScheduleScreen() {
   );
 
   const [range, setRange] = useState<RangeKey>('week');
+  // Home's "a routine request is waiting for you" card opens the routine tab.
+  const route = useRoute<RouteProp<RootTabParamList, 'Schedule'>>();
+  const requestedRange = route.params?.range;
+  useEffect(() => {
+    if (requestedRange === 'routine') setRange('routine');
+  }, [requestedRange, route.key, route.params]);
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [overdueExpanded, setOverdueExpanded] = useState(true);
@@ -210,17 +228,17 @@ export function ScheduleScreen() {
   // Runs a routine-grid edit in order (removals before additions — the
   // database refuses two rules for the same dog, time and day) and stops at
   // the first failure, which the store already shows as actionError.
-  const applyRoutineOps = async (ops: RoutineOp[]) => {
+  const applyRoutineOps = async (ops: RoutineOp[], dogId: string | undefined = dog?.id) => {
     for (const op of ops) {
       if (op.type === 'delete') {
         await deleteRule(op.ruleId);
       } else if (op.type === 'update') {
         await updateRule(op.ruleId, { daysOfWeek: op.daysOfWeek });
-      } else if (dog) {
+      } else if (dogId) {
         await addRule({
           id: generateId('rule'),
           familyId,
-          dogId: dog.id,
+          dogId,
           time: op.time,
           daysOfWeek: op.daysOfWeek,
           rotationUserIds: [op.userId],
@@ -231,6 +249,89 @@ export function ScheduleScreen() {
         });
       }
       if (useScheduleStore.getState().actionError) return;
+    }
+  };
+
+  // Permanent routine change requests (owner request 2026-11-10). Loaded
+  // while the routine tab is open and refreshed every 30 s there.
+  const [routineRequests, setRoutineRequests] = useState<RoutineChangeRequest[]>([]);
+  const [routineRequestBusyId, setRoutineRequestBusyId] = useState<string | null>(null);
+  const [routineRequestError, setRoutineRequestError] = useState<string | null>(null);
+  const loadRoutineRequests = async () => {
+    if (!isSupabaseConfigured || !familyId) return;
+    try {
+      setRoutineRequests(await listRoutineChangeRequests(familyId));
+    } catch {
+      /* the list stays as it was; the next refresh retries */
+    }
+  };
+  useEffect(() => {
+    if (range !== 'routine') return undefined;
+    void loadRoutineRequests();
+    const timer = setInterval(() => void loadRoutineRequests(), 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, familyId]);
+
+  const runRoutineRequestAction = async (id: string | null, work: () => Promise<void>) => {
+    setRoutineRequestBusyId(id);
+    try {
+      await work();
+    } catch (e) {
+      setRoutineRequestError(routineRequestErrorMessage(e));
+    } finally {
+      setRoutineRequestBusyId(null);
+      void loadRoutineRequests();
+    }
+  };
+
+  /** The admin applies the request to the routine, then marks it approved. */
+  const approveRoutineRequest = async (r: RoutineChangeRequest) => {
+    const rulesOf = () => useScheduleStore.getState().rules.filter((x) => x.dogId === r.dogId);
+    const state = routineRequestState(rulesOf(), r);
+    if (state === 'stale') {
+      throw new Error('השגרה השתנתה מאז שהבקשה נשלחה, ולכן אי אפשר לאשר אותה כמו שהיא. אפשר לדחות אותה ולעדכן את המשבצות ידנית.');
+    }
+    if (state === 'ok') {
+      for (const step of routineRequestSteps(r)) {
+        await applyRoutineOps(planCellAssignment(rulesOf(), step.time, [step.day], step.userId), r.dogId);
+        if (useScheduleStore.getState().actionError) {
+          throw new Error('עדכון השגרה לא הושלם. נסו לאשר שוב.');
+        }
+      }
+    }
+    await decideRoutineChangeRequest(r.id, true);
+  };
+
+  const handleRoutineRequest = async (draft: RoutineRequestDraft) => {
+    if (!dog) return;
+    try {
+      await createRoutineChangeRequest({ ...draft, dogId: dog.id });
+    } catch (e) {
+      throw new Error(routineRequestErrorMessage(e));
+    }
+    void loadRoutineRequests();
+  };
+
+  /** "Just this once": open the existing request flow for the next walk in this cell. */
+  const handleRoutineOneOff = (day: number, time: string, mode: 'swap' | 'time') => {
+    const now = Date.now();
+    const next = walks
+      .filter((w) => {
+        if (w.dogId !== dog?.id || w.status !== 'pending' || w.scheduledTime !== time) return false;
+        const [y, m, d] = w.date.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay() === day && new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > now;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (!next) {
+      setRoutineRequestError('לא מצאנו טיול קרוב ביום ובשעה האלה.');
+      return;
+    }
+    if (mode === 'swap' ? canRequestSwapForWalk(next) : canRequestTimeChangeForWalk(next)) {
+      if (mode === 'swap') setRequestSwapWalkId(next.id);
+      else setRequestTimeChangeWalkId(next.id);
+    } else {
+      setRoutineRequestError('לטיול הקרוב כבר יש בקשה פתוחה, או שאי אפשר לבקש עליו שינוי.');
     }
   };
 
@@ -466,6 +567,27 @@ export function ScheduleScreen() {
               setEditingRule(null);
               setRuleFormVisible(true);
             }}
+            currentUserId={effectiveUserId}
+            requests={routineRequests.filter((r) => r.dogId === dog?.id)}
+            onRequest={isSupabaseConfigured ? handleRoutineRequest : undefined}
+            onOneOff={isSupabaseConfigured ? handleRoutineOneOff : undefined}
+          />
+          <RoutineRequestsList
+            requests={routineRequests.filter((r) => r.dogId === dog?.id)}
+            usersById={usersById}
+            currentUserId={effectiveUserId}
+            isAdmin={familyRole === 'admin'}
+            busyId={routineRequestBusyId}
+            onRespond={(r, accept) => void runRoutineRequestAction(r.id, async () => {
+              await respondRoutineChangeRequest(r.id, accept);
+              // The admin answering a request addressed to them approves it in the same tap.
+              if (accept && familyRole === 'admin') await approveRoutineRequest({ ...r, status: 'pending_admin' });
+            })}
+            onDecide={(r, approve) => void runRoutineRequestAction(r.id, async () => {
+              if (approve) await approveRoutineRequest(r);
+              else await decideRoutineChangeRequest(r.id, false);
+            })}
+            onCancel={(r) => void runRoutineRequestAction(r.id, () => cancelRoutineChangeRequest(r.id))}
           />
         </View>
         {range === 'routine' ? null : (
@@ -650,6 +772,16 @@ export function ScheduleScreen() {
           if (walkId) await createTimeChangeRequest(walkId, proposedTime);
         }}
         onClose={() => setRequestTimeChangeWalkId(null)}
+      />
+
+      <ConfirmModal
+        visible={!!routineRequestError}
+        title="אופס"
+        message={routineRequestError ?? ''}
+        confirmLabel="הבנתי"
+        onConfirm={() => setRoutineRequestError(null)}
+        onCancel={() => setRoutineRequestError(null)}
+        hideCancel
       />
 
       <ConfirmModal

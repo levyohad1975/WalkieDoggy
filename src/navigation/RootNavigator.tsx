@@ -30,7 +30,8 @@ import { consumePendingChatOpen, subscribeToChatOpens } from '../notifications/c
 
 export type RootTabParamList = {
   Home: undefined;
-  Schedule: undefined;
+  /** `range: 'routine'` opens "ניהול שגרה" (routine change requests, 2026-11-10). */
+  Schedule: { range?: 'routine' } | undefined;
   Chat: undefined;
   Family: undefined;
   History: undefined;

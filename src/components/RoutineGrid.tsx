@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
@@ -19,6 +19,11 @@ import {
   weeklyLoad,
   type RoutineOp,
 } from '../logic/routineGrid';
+import { openRequestCellKeys, routineSlotLabel, type RoutineChangeRequest } from '../logic/routineRequests';
+import type { NewRoutineRequest } from '../lib/routineRequests';
+
+/** A request as the grid builds it; the screen adds the dog. */
+export type RoutineRequestDraft = Omit<NewRoutineRequest, 'dogId'>;
 
 interface RoutineGridProps {
   rules: ScheduleRule[];
@@ -32,7 +37,18 @@ interface RoutineGridProps {
   /** A rotation cell (several people take turns) opens the full rule form. */
   onEditRule: (ruleId: string) => void;
   onAddTime: () => void;
+  /** The signed-in member; with onRequest, a non-admin can ask for changes. */
+  currentUserId?: string;
+  /** Open requests, to mark the cells they touch. */
+  requests?: RoutineChangeRequest[];
+  /** Ask for a permanent change (goes to the other member, then the admin). */
+  onRequest?: (draft: RoutineRequestDraft) => Promise<void>;
+  /** One-off shortcut: the existing request for the next walk in this cell. */
+  onOneOff?: (day: number, time: string, mode: 'swap' | 'time') => void;
 }
+
+type RequestSel = { time: string; day: number; ownerId: string };
+type RequestStep = 'menu' | 'swapPick' | 'givePick' | 'time';
 
 type CellSel = { time: string; day: number; userId: string | null };
 
@@ -41,7 +57,7 @@ type CellSel = { time: string; day: number; userId: string | null };
  * instead of a row per rule. Tap a cell to choose who walks (this day, or
  * every day at this time); tap a time to move or remove the whole row.
  */
-export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime }: RoutineGridProps) {
+export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime, currentUserId, requests = [], onRequest, onOneOff }: RoutineGridProps) {
   const rows = useMemo(() => buildRoutineRows(rules), [rules]);
   const load = useMemo(() => weeklyLoad(rows), [rows]);
   const tints = useMemo(() => tintsByUser(users), [users]);
@@ -54,6 +70,36 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [req, setReq] = useState<RequestSel | null>(null);
+  const [reqStep, setReqStep] = useState<RequestStep>('menu');
+  const [reqTime, setReqTime] = useState('');
+  const [sentNotice, setSentNotice] = useState<string | null>(null);
+
+  // Family members (not the admin) tap a person's cell to ask for a change.
+  const canRequest = !canEdit && Boolean(onRequest && currentUserId);
+  const requestCells = useMemo(() => openRequestCellKeys(requests), [requests]);
+  const personCells = useMemo(
+    () => WEEK_DAYS.flatMap((day) => rows.map((row) => ({ day, time: row.time, cell: row.cells[day] })))
+      .filter((x): x is { day: number; time: string; cell: { kind: 'person'; ruleId: string; userId: string } } => x.cell?.kind === 'person'),
+    [rows],
+  );
+
+  const openRequest = (time: string, day: number) => {
+    const c = rows.find((r) => r.time === time)?.cells[day] ?? null;
+    if (c?.kind !== 'person') return;
+    setReq({ time, day, ownerId: c.userId });
+    setReqStep('menu');
+    setReqTime(time);
+    setError(null);
+  };
+
+  const sendRequest = (draft: RoutineRequestDraft, toName: string | null) => {
+    if (!onRequest) return;
+    void run(() => onRequest(draft), () => {
+      setReq(null);
+      setSentNotice(toName ? `הבקשה נשלחה ל${toName}, ואחריו/ה לאישור מנהל המשפחה.` : 'הבקשה נשלחה לאישור מנהל המשפחה.');
+    });
+  };
 
   const openCell = (time: string, day: number) => {
     const c = rows.find((r) => r.time === time)?.cells[day] ?? null;
@@ -74,7 +120,8 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
       await work();
       close();
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      // A message the screen already wrote in Hebrew is shown as is.
+      setError(e instanceof Error && /[\u0590-\u05FF]/.test(e.message) ? e.message : friendlyErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -153,12 +200,14 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                 return (
                   <Pressable
                     key={day}
-                    onPress={canEdit ? () => openCell(row.time, day) : undefined}
-                    disabled={!canEdit}
+                    onPress={canEdit ? () => openCell(row.time, day) : canRequest && c?.kind === 'person' ? () => openRequest(row.time, day) : undefined}
+                    disabled={!canEdit && !(canRequest && c?.kind === 'person')}
                     style={[styles.cell, c ? (tint ? { backgroundColor: tint.bg } : styles.cellRotation) : styles.cellEmpty]}
-                    accessibilityRole={canEdit ? 'button' : undefined}
-                    accessibilityLabel={`יום ${DAY_LONG_LABELS[day]} ${row.time}: ${cellName(c)}`}
+                    accessibilityRole={canEdit || (canRequest && c?.kind === 'person') ? 'button' : undefined}
+                    accessibilityLabel={`יום ${DAY_LONG_LABELS[day]} ${row.time}: ${cellName(c)}${requestCells.has(`${day}|${row.time}`) ? ' (יש בקשה פתוחה)' : ''}`}
+                    accessibilityHint={canRequest && c?.kind === 'person' ? 'פותח בקשה להחלפה או לשינוי קבוע' : undefined}
                   >
+                    {requestCells.has(`${day}|${row.time}`) ? <View style={styles.requestDot} accessible={false} /> : null}
                     {c?.kind === 'person' ? (
                       <>
                         <Avatar emoji={user?.avatar ?? '🙂'} color={user?.color ?? colors.border} photoUrl={user?.photoUrl} size={24} />
@@ -195,6 +244,14 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
       ) : null}
       {canEdit && rows.length > 0 ? (
         <RtlText style={styles.hint}>לוחצים על משבצת כדי לבחור מי מטייל, ועל שעה כדי לשנות או למחוק אותה.</RtlText>
+      ) : null}
+      {canRequest && rows.length > 0 ? (
+        <RtlText style={styles.hint}>לוחצים על משבצת כדי לבקש החלפה או שינוי בשגרה. נקודה כתומה מסמנת בקשה פתוחה.</RtlText>
+      ) : null}
+      {sentNotice ? (
+        <Pressable onPress={() => setSentNotice(null)} style={styles.notice} accessibilityRole="button" accessibilityLabel={`${sentNotice} סגירה`}>
+          <RtlText style={styles.noticeText} accessibilityLiveRegion="polite">{`✓ ${sentNotice}`}</RtlText>
+        </Pressable>
       ) : null}
 
       {/* Who walks in this cell. */}
@@ -240,6 +297,135 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
               <Button label={cell ? `לכל ימי ה-${cell.time}` : 'לכל השבוע'} variant="secondary" onPress={() => saveCell(true)} disabled={busy} style={styles.flex} />
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* A family member asks for a change in this cell. */}
+      <Modal visible={req !== null} transparent animationType="slide" onRequestClose={() => setReq(null)}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !busy && setReq(null)} accessibilityLabel="סגירה" />
+          {req ? (() => {
+            const mine = req.ownerId === currentUserId;
+            const owner = usersById[req.ownerId];
+            const slot = routineSlotLabel(req.day, req.time);
+            const myCells = personCells.filter((x) => x.cell.userId === currentUserId);
+            const swapOptions = mine
+              ? personCells.filter((x) => x.cell.userId !== currentUserId)
+              : myCells;
+            return (
+              <View style={styles.sheet}>
+                <RtlText style={styles.sheetTitle} accessibilityRole="header">
+                  {mine ? `הטיול שלך · ${slot}` : `הטיול של ${owner?.name ?? ''} · ${slot}`}
+                </RtlText>
+                {reqStep === 'menu' ? (
+                  <>
+                    <RtlText style={styles.sheetSub}>שינוי קבוע בשגרה (מעכשיו והלאה)</RtlText>
+                    {mine ? (
+                      <>
+                        <Button label="🔁 החלפה עם טיול של מישהו אחר" variant="secondary" onPress={() => setReqStep('swapPick')} disabled={busy} style={styles.full} />
+                        <Button label="➡️ העברה לבן משפחה אחר" variant="secondary" onPress={() => setReqStep('givePick')} disabled={busy} style={styles.full} />
+                        <Button label="🕒 שינוי השעה" variant="secondary" onPress={() => setReqStep('time')} disabled={busy} style={styles.full} />
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          label="🔁 החלפה עם טיול שלי"
+                          variant="secondary"
+                          onPress={() => setReqStep('swapPick')}
+                          disabled={busy || myCells.length === 0}
+                          style={styles.full}
+                        />
+                        <Button
+                          label="🙋 אני רוצה לקחת את הטיול הזה"
+                          variant="secondary"
+                          onPress={() => sendRequest({ kind: 'take', targetUserId: req.ownerId, theirDay: req.day, theirTime: req.time }, owner?.name ?? null)}
+                          loading={busy}
+                          disabled={busy}
+                          style={styles.full}
+                        />
+                      </>
+                    )}
+                    {mine && onOneOff ? (
+                      <>
+                        <RtlText style={[styles.sheetSub, styles.oneOffTitle]}>רק הפעם (הטיול הקרוב ביום הזה)</RtlText>
+                        <View style={styles.actions}>
+                          <Button label="החלפה חד-פעמית" variant="secondary" compact onPress={() => { setReq(null); onOneOff(req.day, req.time, 'swap'); }} disabled={busy} style={styles.flex} />
+                          <Button label="שינוי שעה חד-פעמי" variant="secondary" compact onPress={() => { setReq(null); onOneOff(req.day, req.time, 'time'); }} disabled={busy} style={styles.flex} />
+                        </View>
+                      </>
+                    ) : null}
+                  </>
+                ) : reqStep === 'swapPick' ? (
+                  <>
+                    <RtlText style={styles.sheetSub}>{mine ? 'עם איזה טיול להחליף?' : 'איזה טיול שלך לתת בתמורה?'}</RtlText>
+                    <ScrollView style={styles.slotList} contentContainerStyle={styles.slotListInner}>
+                      {swapOptions.map((x) => {
+                        const u = usersById[x.cell.userId];
+                        return (
+                          <Pressable
+                            key={`${x.day}|${x.time}`}
+                            onPress={() => mine
+                              ? sendRequest({ kind: 'swap', myDay: req.day, myTime: req.time, targetUserId: x.cell.userId, theirDay: x.day, theirTime: x.time }, u?.name ?? null)
+                              : sendRequest({ kind: 'swap', myDay: x.day, myTime: x.time, targetUserId: req.ownerId, theirDay: req.day, theirTime: req.time }, owner?.name ?? null)}
+                            disabled={busy}
+                            style={[styles.slotChip, { backgroundColor: tints[x.cell.userId]?.bg }]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${u?.name ?? ''}, ${routineSlotLabel(x.day, x.time)}`}
+                          >
+                            <Avatar emoji={u?.avatar ?? '🙂'} color={u?.color ?? colors.border} photoUrl={u?.photoUrl} size={22} />
+                            <RtlText style={[styles.slotText, { color: tints[x.cell.userId]?.fg }]}>{`${mine ? `${u?.name ?? ''} · ` : ''}${routineSlotLabel(x.day, x.time)}`}</RtlText>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                    <Button label="חזרה" variant="secondary" compact onPress={() => setReqStep('menu')} disabled={busy} style={styles.full} />
+                  </>
+                ) : reqStep === 'givePick' ? (
+                  <>
+                    <RtlText style={styles.sheetSub}>למי להעביר את הטיול?</RtlText>
+                    <View style={styles.people}>
+                      {users.filter((u) => u.id !== currentUserId).map((u) => (
+                        <Pressable
+                          key={u.id}
+                          onPress={() => sendRequest({ kind: 'give', myDay: req.day, myTime: req.time, targetUserId: u.id }, u.name)}
+                          disabled={busy}
+                          style={[styles.person, { backgroundColor: tints[u.id]?.bg }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={u.name}
+                        >
+                          <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={34} />
+                          <RtlText style={[styles.personName, { color: tints[u.id]?.fg }]} numberOfLines={1}>{u.name}</RtlText>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Button label="חזרה" variant="secondary" compact onPress={() => setReqStep('menu')} disabled={busy} style={styles.full} />
+                  </>
+                ) : (
+                  <>
+                    <RtlText style={styles.sheetSub}>{`לאיזו שעה להזיז את הטיול של יום ${DAY_LONG_LABELS[req.day]}?`}</RtlText>
+                    <TimePickerField value={reqTime} onChange={setReqTime} webLabel="בחירת שעה חדשה" />
+                    <View style={styles.actions}>
+                      <Button
+                        label="שליחת הבקשה"
+                        onPress={() => {
+                          if (reqTime === req.time) { setError('בחרו שעה אחרת מהשעה הנוכחית.'); return; }
+                          sendRequest({ kind: 'change_time', myDay: req.day, myTime: req.time, newTime: reqTime }, null);
+                        }}
+                        loading={busy}
+                        disabled={busy}
+                        style={styles.flex}
+                      />
+                      <Button label="חזרה" variant="secondary" onPress={() => setReqStep('menu')} disabled={busy} style={styles.flex} />
+                    </View>
+                  </>
+                )}
+                {error ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</RtlText> : null}
+                <RtlText style={styles.sheetNote}>
+                  {reqStep === 'time' ? 'מנהל המשפחה יאשר את השינוי.' : 'בן המשפחה השני מאשר קודם, ואחריו מנהל המשפחה.'}
+                </RtlText>
+              </View>
+            );
+          })() : null}
         </View>
       </Modal>
 
@@ -290,6 +476,14 @@ const styles = StyleSheet.create({
   loadChipPerson: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingRight: 5 },
   loadText: { fontSize: 12, fontWeight: '800', color: colors.textPrimary },
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
+  notice: { backgroundColor: '#E3F4EA', borderRadius: radii.md, paddingVertical: 8, paddingHorizontal: 12 },
+  noticeText: { color: '#1E6B3E', fontSize: 13, fontWeight: '700', textAlign: 'right' },
+  requestDot: { position: 'absolute', top: 4, left: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: '#F08A24', borderWidth: 1, borderColor: '#FFFFFF' },
+  oneOffTitle: { marginTop: spacing.xs },
+  slotList: { maxHeight: 300 },
+  slotListInner: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  slotChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 6, paddingRight: 6, paddingLeft: 12 },
+  slotText: { fontSize: 13, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: spacing.lg, gap: spacing.sm, maxWidth: 560, width: '100%', alignSelf: 'center' },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
