@@ -10,6 +10,7 @@ import {
   summarizeWalksByUser,
   swapWalk,
   swapWalksMutual,
+  swappedFromUserId,
   undoMarkDone,
   walkCompletionLine,
   walkHistoryTimingLine,
@@ -274,6 +275,16 @@ describe('isCurrentlySwapped ("הוחלף" must reflect current vs. original ass
     const toNoam = swapWalk(toYael, 'noam', 'yael');
     expect(isCurrentlySwapped(toNoam)).toBe(true);
     expect(toNoam.swap?.originalUserId).toBe('danny');
+  });
+});
+
+describe('swappedFromUserId (Home: "↔ במקום X" on a swapped walk)', () => {
+  it('names the original walker only while the walk is still swapped', () => {
+    const walk = makeWalk({ responsibleUserId: 'danny' });
+    expect(swappedFromUserId(walk)).toBeNull();
+    const toYael = swapWalk(walk, 'yael', 'danny');
+    expect(swappedFromUserId(toYael)).toBe('danny');
+    expect(swappedFromUserId(swapWalk(toYael, 'danny', 'yael'))).toBeNull();
   });
 });
 

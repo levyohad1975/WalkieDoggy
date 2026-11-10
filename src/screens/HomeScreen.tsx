@@ -16,7 +16,7 @@ import { canAccessHistoryScreen } from '../logic/permissions';
 import { resolveCompletionWalkEventCounts, validWalkEventCount } from '../logic/walkEventCounts';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
-import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
+import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge, swappedFromUserId } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
@@ -1559,6 +1559,7 @@ export function HomeScreen() {
           <NextWalkCard
             walk={nextWalk}
             responsible={usersById[nextWalk.responsibleUserId]}
+            swappedFrom={swappedFromUserId(nextWalk) ? usersById[swappedFromUserId(nextWalk)!] : undefined}
             actualWalker={nextWalk.status === 'in_progress' && nextWalk.actualWalkerUserId ? usersById[nextWalk.actualWalkerUserId] : undefined}
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
@@ -1833,6 +1834,9 @@ export function HomeScreen() {
               <View style={styles.dashboardSingleUpcomingText}>
                 <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
                 <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                {swappedFromUserId(dashboardTimelineWalks[0]) ? (
+                  <RtlText style={styles.dashboardTimelineSwapped}>{`↔ במקום ${usersById[swappedFromUserId(dashboardTimelineWalks[0])!]?.name ?? 'בן משפחה'}`}</RtlText>
+                ) : null}
               </View>
               <RtlText style={styles.dashboardSingleUpcomingHint}>{isActiveWalk(dashboardTimelineWalks[0]) ? 'בטיול עכשיו' : 'הטיול הבא היום'}</RtlText>
             </View>
@@ -1854,6 +1858,9 @@ export function HomeScreen() {
                   <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
                     <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, isActiveWalk(walk) && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : isActiveWalk(walk) ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
                     <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                    {swappedFromUserId(walk) ? (
+                      <RtlText style={styles.dashboardTimelineSwapped} numberOfLines={1}>{`↔ במקום ${usersById[swappedFromUserId(walk)!]?.name ?? 'בן משפחה'}`}</RtlText>
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -2688,6 +2695,7 @@ const styles = StyleSheet.create({
   dashboardTimelineTimeSkipped: { color: colors.textSecondary, textDecorationLine: 'line-through' },
   dashboardTimelineTimeActive: { color: colors.info },
   dashboardTimelineName: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
+  dashboardTimelineSwapped: { fontSize: 10, fontWeight: '700', color: '#B35C00', maxWidth: 80, textAlign: 'center' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
   // Real-device QA fix: this used to be `{ display: 'none' }`, unconditionally
   // hiding everything inside it — including "ממתינים לעדכון" (overdue walks)

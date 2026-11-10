@@ -24,6 +24,8 @@ interface NextWalkCardProps {
   /** IANA timezone that owns the family schedule. */
   scheduleTimezone?: string;
   responsible?: FamilyUser;
+  /** Planned for this member before a one-off swap (still swapped). */
+  swappedFrom?: FamilyUser;
   actualWalker?: FamilyUser;
   currentUserId: string;
   dogName: string;
@@ -119,6 +121,7 @@ export function NextWalkCard({
   walk,
   scheduleTimezone,
   responsible,
+  swappedFrom,
   actualWalker,
   currentUserId,
   dogName,
@@ -377,6 +380,7 @@ export function NextWalkCard({
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
             <RtlText style={styles.dashboardPersonName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>{responsible?.name ?? '—'}</RtlText>
             <RtlText style={styles.dashboardColumnLabel}>מתוכנן ל</RtlText>
+            {swappedFrom ? <RtlText style={styles.swappedFromLabel} numberOfLines={1}>{`↔ הוחלף · במקום ${swappedFrom.name}`}</RtlText> : null}
             {isActive && actualWalker ? <RtlText style={styles.actualWalkerLabel} numberOfLines={2}>מבצע בפועל: {actualWalker.name}</RtlText> : null}
           </View>
           <View style={styles.dashboardTimeColumn}>
@@ -405,6 +409,7 @@ export function NextWalkCard({
               {responsible?.name ?? '—'}
             </RtlText>
             {overdue ? <RtlText style={styles.responsibleLabel}>באחריות {responsible?.name}</RtlText> : null}
+            {swappedFrom ? <RtlText style={styles.swappedFromLabel} numberOfLines={1}>{`↔ הוחלף · במקום ${swappedFrom.name}`}</RtlText> : null}
           </View>
         </View>
       )}
@@ -533,6 +538,7 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  swappedFromLabel: { fontSize: 12, fontWeight: '700', color: '#B35C00', textAlign: 'center', marginTop: 2 },
   walkEventGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   walkEventUndo: { width: 44, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },

@@ -318,6 +318,15 @@ export function isCurrentlySwapped(walk: Walk): boolean {
 }
 
 /**
+ * Who this walk was planned for before a one-off swap, while it is still
+ * swapped (null otherwise). Owner report 2026-11-10: Home showed tonight's
+ * 22:00 as עומר with no hint that it was עידן's walk, swapped for one day.
+ */
+export function swappedFromUserId(walk: Walk): string | null {
+  return isCurrentlySwapped(walk) ? walk.swap!.originalUserId : null;
+}
+
+/**
  * QA/UX round, Part B/I: WalkRow's one-line metadata text
  * ("טיול ספונטני" / "הוחלף" / both) extracted as pure logic so it's
  * testable independent of rendering. Returns null when there's nothing to
