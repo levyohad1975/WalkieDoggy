@@ -79,8 +79,10 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
   const canRequest = !canEdit && Boolean(onRequest && currentUserId);
   const requestCells = useMemo(() => openRequestCellKeys(requests), [requests]);
   const personCells = useMemo(
-    () => WEEK_DAYS.flatMap((day) => rows.map((row) => ({ day, time: row.time, cell: row.cells[day] })))
-      .filter((x): x is { day: number; time: string; cell: { kind: 'person'; ruleId: string; userId: string } } => x.cell?.kind === 'person'),
+    () => WEEK_DAYS.flatMap((day) => rows.flatMap((row) => {
+      const c = row.cells[day];
+      return c?.kind === 'person' ? [{ day: day as number, time: row.time, userId: c.userId }] : [];
+    })),
     [rows],
   );
 
@@ -308,9 +310,9 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
             const mine = req.ownerId === currentUserId;
             const owner = usersById[req.ownerId];
             const slot = routineSlotLabel(req.day, req.time);
-            const myCells = personCells.filter((x) => x.cell.userId === currentUserId);
+            const myCells = personCells.filter((x) => x.userId === currentUserId);
             const swapOptions = mine
-              ? personCells.filter((x) => x.cell.userId !== currentUserId)
+              ? personCells.filter((x) => x.userId !== currentUserId)
               : myCells;
             return (
               <View style={styles.sheet}>
@@ -360,20 +362,20 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                     <RtlText style={styles.sheetSub}>{mine ? 'עם איזה טיול להחליף?' : 'איזה טיול שלך לתת בתמורה?'}</RtlText>
                     <ScrollView style={styles.slotList} contentContainerStyle={styles.slotListInner}>
                       {swapOptions.map((x) => {
-                        const u = usersById[x.cell.userId];
+                        const u = usersById[x.userId];
                         return (
                           <Pressable
                             key={`${x.day}|${x.time}`}
                             onPress={() => mine
-                              ? sendRequest({ kind: 'swap', myDay: req.day, myTime: req.time, targetUserId: x.cell.userId, theirDay: x.day, theirTime: x.time }, u?.name ?? null)
+                              ? sendRequest({ kind: 'swap', myDay: req.day, myTime: req.time, targetUserId: x.userId, theirDay: x.day, theirTime: x.time }, u?.name ?? null)
                               : sendRequest({ kind: 'swap', myDay: x.day, myTime: x.time, targetUserId: req.ownerId, theirDay: req.day, theirTime: req.time }, owner?.name ?? null)}
                             disabled={busy}
-                            style={[styles.slotChip, { backgroundColor: tints[x.cell.userId]?.bg }]}
+                            style={[styles.slotChip, { backgroundColor: tints[x.userId]?.bg }]}
                             accessibilityRole="button"
                             accessibilityLabel={`${u?.name ?? ''}, ${routineSlotLabel(x.day, x.time)}`}
                           >
                             <Avatar emoji={u?.avatar ?? '🙂'} color={u?.color ?? colors.border} photoUrl={u?.photoUrl} size={22} />
-                            <RtlText style={[styles.slotText, { color: tints[x.cell.userId]?.fg }]}>{`${mine ? `${u?.name ?? ''} · ` : ''}${routineSlotLabel(x.day, x.time)}`}</RtlText>
+                            <RtlText style={[styles.slotText, { color: tints[x.userId]?.fg }]}>{`${mine ? `${u?.name ?? ''} · ` : ''}${routineSlotLabel(x.day, x.time)}`}</RtlText>
                           </Pressable>
                         );
                       })}
