@@ -525,7 +525,7 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
 describe('OfflineFirstRepository.updateUserProfile — server-confirmed photo persistence', () => {
   const memberWithPhoto: FamilyUser = {
     id: 'user-photo', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-    photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, chatNotificationsEnabled: true, gamificationEnabled: true, createdAt: 'now',
   };
 
   it('requires an online server confirmation and does not queue or update local state offline', async () => {

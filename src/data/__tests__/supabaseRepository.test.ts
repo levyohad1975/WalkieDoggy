@@ -131,7 +131,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     const user: FamilyUser = {
       id: 'user-photo', familyId: 'fam-42', name: 'עידן', avatar: '🙂',
       photoUrl: 'https://cdn.example/member.jpg', color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      remindersEnabled: true, chatNotificationsEnabled: true, gamificationEnabled: true, createdAt: 'now',
     };
 
     await repo.updateUserProfile(user);
@@ -151,7 +151,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     const user: FamilyUser = {
       id: 'missing-user', familyId: 'fam-42', name: 'עידן', avatar: '🙂',
       photoUrl: 'https://cdn.example/member.jpg', color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      remindersEnabled: true, chatNotificationsEnabled: true, gamificationEnabled: true, createdAt: 'now',
     };
 
     await expect(repo.updateUserProfile(user)).rejects.toThrow('Profile update was not confirmed');
