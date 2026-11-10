@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
+import { Avatar } from './Avatar';
 import { TimePickerField } from './TimePickerField';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
@@ -160,7 +161,7 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                   >
                     {c?.kind === 'person' ? (
                       <>
-                        <RtlText style={styles.cellEmoji}>{user?.avatar ?? '🙂'}</RtlText>
+                        <Avatar emoji={user?.avatar ?? '🙂'} color={user?.color ?? colors.border} photoUrl={user?.photoUrl} size={24} />
                         <RtlText style={[styles.cellName, tint && { color: tint.fg }]} numberOfLines={1}>{user?.name ?? '?'}</RtlText>
                       </>
                     ) : c?.kind === 'rotation' ? (
@@ -182,8 +183,9 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
       {rows.length > 0 ? (
         <View style={styles.loadRow}>
           {users.filter((u) => load.byUser[u.id]).map((u) => (
-            <View key={u.id} style={[styles.loadChip, { backgroundColor: tints[u.id]?.bg }]}>
-              <RtlText style={[styles.loadText, { color: tints[u.id]?.fg }]}>{`${u.avatar} ${u.name} · ${load.byUser[u.id]} בשבוע`}</RtlText>
+            <View key={u.id} style={[styles.loadChip, styles.loadChipPerson, { backgroundColor: tints[u.id]?.bg }]}>
+              <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={20} />
+              <RtlText style={[styles.loadText, { color: tints[u.id]?.fg }]}>{`${u.name} · ${load.byUser[u.id]} בשבוע`}</RtlText>
             </View>
           ))}
           {load.rotation > 0 ? (
@@ -216,7 +218,7 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={u.name}
                   >
-                    <RtlText style={styles.personEmoji}>{u.avatar}</RtlText>
+                    <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={34} />
                     <RtlText style={[styles.personName, { color: tints[u.id]?.fg }]} numberOfLines={1}>{u.name}</RtlText>
                   </Pressable>
                 );
@@ -277,7 +279,7 @@ const styles = StyleSheet.create({
   timeCol: { width: 48, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
   timeText: { fontSize: 14, fontWeight: '900', color: colors.textPrimary, writingDirection: 'ltr' },
   dayHead: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '800', color: colors.textSecondary },
-  cell: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, paddingHorizontal: 1 },
+  cell: { flex: 1, minHeight: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 4, paddingHorizontal: 1 },
   cellEmpty: { backgroundColor: colors.surface, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border },
   cellRotation: { backgroundColor: '#F2EEE6' },
   cellEmoji: { fontSize: 16, lineHeight: 19 },
@@ -285,6 +287,7 @@ const styles = StyleSheet.create({
   cellPlus: { fontSize: 18, color: colors.textSecondary },
   loadRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: spacing.xs },
   loadChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  loadChipPerson: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingRight: 5 },
   loadText: { fontSize: 12, fontWeight: '800', color: colors.textPrimary },
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
@@ -293,7 +296,7 @@ const styles = StyleSheet.create({
   sheetSub: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   sheetNote: { fontSize: 12, color: colors.textSecondary, textAlign: 'center' },
   people: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
-  person: { width: '31%', borderRadius: 14, paddingVertical: 10, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
+  person: { width: '31%', borderRadius: 14, paddingVertical: 10, alignItems: 'center', gap: 4, borderWidth: 2, borderColor: 'transparent' },
   personNone: { backgroundColor: '#F2EEE6' },
   personOn: { borderColor: colors.primaryDark },
   personEmoji: { fontSize: 22, lineHeight: 26 },
