@@ -33,6 +33,7 @@ import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/A
 import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { RequestsInboxModal } from '../components/RequestsInboxModal';
+import { HelpCenterModal } from '../components/HelpCenterModal';
 import { RemindersModal } from '../components/RemindersModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
@@ -1269,6 +1270,9 @@ export function HomeScreen() {
     ? routineRequestsWaitingFor(routineRequests, currentUserId, actualFamilyRole === 'admin')
     : [];
   const bellBadgeCount = pendingForMe + unreadResultsForMe + routineRequestsForMe.length;
+  // Owner request 2026-11-10: help one tap away, next to the bell (it also
+  // stays in Settings and on the Family screen).
+  const [helpVisible, setHelpVisible] = useState(false);
 
   const openRequestsInbox = () => {
     setRequestsInboxVisible(true);
@@ -1434,6 +1438,17 @@ export function HomeScreen() {
                   <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
                 </View>
               ) : null}
+            </Pressable>
+            <Pressable
+              onPress={() => setHelpVisible(true)}
+              style={styles.helpButton}
+              accessibilityRole="button"
+              accessibilityLabel="עזרה ותמיכה"
+              hitSlop={4}
+            >
+              <View style={styles.helpCircle}>
+                <RtlText style={styles.helpMark}>?</RtlText>
+              </View>
             </Pressable>
           </View>
 
@@ -2431,6 +2446,8 @@ export function HomeScreen() {
         }}
       />
 
+      <HelpCenterModal visible={helpVisible} onClose={() => setHelpVisible(false)} />
+
       <RemindersModal
         visible={personalNotificationsVisible && canManagePersonalNotifications}
         users={users}
@@ -2679,6 +2696,18 @@ const styles = StyleSheet.create({
   dashboardOverflow: {},
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
+  helpButton: { position: 'absolute', right: spacing.md + 44, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  helpCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.primaryDark,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpMark: { fontSize: 15, lineHeight: 18, fontWeight: '900', color: colors.primaryDark, textAlign: 'center' },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },
   healthSummaryPill: {
