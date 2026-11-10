@@ -9,6 +9,7 @@ import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { computeRequestLifecycle, isRequestVisible } from '../logic/requestLifecycle';
 import { getHealthTaskLifecycle, HEALTH_TASK_CATEGORY_LABELS } from '../logic/healthTasks';
+import { describeRoutineRequest, type RoutineChangeRequest } from '../logic/routineRequests';
 
 interface RequestsInboxModalProps {
   visible: boolean;
@@ -40,6 +41,13 @@ interface RequestsInboxModalProps {
    * prop additive rather than a breaking change).
    */
   healthReminders?: HealthTask[];
+  /**
+   * Permanent routine change requests waiting for this person (2026-11-10).
+   * They are answered in "ניהול שגרה", where approving one also updates the
+   * routine, so the inbox lists them and links there.
+   */
+  routineRequests?: RoutineChangeRequest[];
+  onOpenRoutineRequests?: () => void;
   dogName?: string;
   onOpenHealthReminders?: () => void;
   onClose: () => void;
@@ -96,6 +104,8 @@ export function RequestsInboxModal({
   onApproveTimeChange,
   onRejectTimeChange,
   healthReminders,
+  routineRequests,
+  onOpenRoutineRequests,
   dogName,
   onOpenHealthReminders,
   onClose,
@@ -186,6 +196,23 @@ export function RequestsInboxModal({
                 );
               });
             })()}
+
+            {routineRequests && routineRequests.length > 0 ? (
+              <>
+                <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>שינויים קבועים בשגרה</RtlText>
+                {routineRequests.map((r) => (
+                  <View key={r.id} style={styles.row}>
+                    <View style={styles.rowHeader}>
+                      <RtlText style={styles.rowText}>{describeRoutineRequest(r, usersById)}</RtlText>
+                      <StatusBadge status="pending" />
+                    </View>
+                  </View>
+                ))}
+                {onOpenRoutineRequests ? (
+                  <Button label="לאישור בניהול השגרה" onPress={onOpenRoutineRequests} compact />
+                ) : null}
+              </>
+            ) : null}
 
             {healthReminders && healthReminders.length > 0 ? (
               <>

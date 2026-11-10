@@ -75,7 +75,7 @@ import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackg
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard';
-import { RoutineRequestsHomeCard } from '../components/RoutineRequestsHomeCard';
+import { RoutineRequestsHomeCard, routineRequestsWaitingFor, useRoutineChangeRequests } from '../components/RoutineRequestsHomeCard';
 import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
@@ -1261,7 +1261,14 @@ export function HomeScreen() {
       ? countRecentlyResolvedRequestsForAdmin(swapRequests, walksById, effectiveUserId) +
         countRecentlyResolvedRequestsForAdmin(timeChangeRequests, walksById, effectiveUserId)
       : 0);
-  const bellBadgeCount = pendingForMe + unreadResultsForMe;
+  // Routine change requests (2026-11-10) count on the bell too: the owner
+  // saw them on the Home card but the 🔔 stayed empty.
+  const routineRequestsEnabled = isSupabaseConfigured && !personalNotificationsReadOnly && effectiveUserId === currentUserId;
+  const routineRequests = useRoutineChangeRequests(routineRequestsEnabled, familyId);
+  const routineRequestsForMe = routineRequestsEnabled
+    ? routineRequestsWaitingFor(routineRequests, currentUserId, actualFamilyRole === 'admin')
+    : [];
+  const bellBadgeCount = pendingForMe + unreadResultsForMe + routineRequestsForMe.length;
 
   const openRequestsInbox = () => {
     setRequestsInboxVisible(true);
@@ -1766,10 +1773,7 @@ export function HomeScreen() {
         {/* Owner request 2026-11-10: a permanent routine change request
             waiting for this member's answer or the admin's approval. */}
         <RoutineRequestsHomeCard
-          enabled={isSupabaseConfigured && !personalNotificationsReadOnly && effectiveUserId === currentUserId}
-          familyId={familyId}
-          userId={currentUserId}
-          isAdmin={actualFamilyRole === 'admin'}
+          count={routineRequestsForMe.length}
           onOpen={() => navigation.navigate('Schedule', { range: 'routine' })}
         />
         <PendingRequestsCard
@@ -2408,6 +2412,11 @@ export function HomeScreen() {
         walksById={walksById}
         swapRequests={swapRequests}
         timeChangeRequests={timeChangeRequests}
+        routineRequests={routineRequestsForMe}
+        onOpenRoutineRequests={() => {
+          setRequestsInboxVisible(false);
+          navigation.navigate('Schedule', { range: 'routine' });
+        }}
         onApproveSwap={approveSwap}
         onRejectSwap={rejectSwap}
         onApproveTimeChange={approveTimeChange}

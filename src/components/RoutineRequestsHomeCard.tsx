@@ -10,10 +10,34 @@ import type { RoutineChangeRequest } from '../logic/routineRequests';
 export const ROUTINE_REQUESTS_HOME_REFRESH_MS = 30000;
 
 /** Requests waiting for this member's answer (or the admin's approval). */
-export function routineRequestsWaitingFor(requests: RoutineChangeRequest[], userId: string, isAdmin: boolean): number {
+export function routineRequestsWaitingFor(requests: RoutineChangeRequest[], userId: string, isAdmin: boolean): RoutineChangeRequest[] {
   return requests.filter((r) =>
     (r.status === 'pending_target' && r.targetUserId === userId) || (r.status === 'pending_admin' && isAdmin),
-  ).length;
+  );
+}
+
+/**
+ * The family's routine change requests for Home (the card and the 🔔 bell),
+ * refreshed every 30 s while the app is in front and whenever it returns.
+ */
+export function useRoutineChangeRequests(enabled: boolean, familyId: string | null): RoutineChangeRequest[] {
+  const [rows, setRows] = useState<RoutineChangeRequest[]>([]);
+  const refresh = useCallback(() => {
+    if (!enabled || !familyId) return;
+    listRoutineChangeRequests(familyId)
+      .then(setRows)
+      .catch(() => { /* offline: keep what we have */ });
+  }, [enabled, familyId]);
+
+  useEffect(() => {
+    if (!enabled) { setRows([]); return undefined; }
+    refresh();
+    const timer = setInterval(() => { if (AppState.currentState === 'active') refresh(); }, ROUTINE_REQUESTS_HOME_REFRESH_MS);
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refresh(); });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [enabled, refresh]);
+
+  return rows;
 }
 
 /**
@@ -22,30 +46,7 @@ export function routineRequestsWaitingFor(requests: RoutineChangeRequest[], user
  * person; tapping it opens "ניהול שגרה", where the request is answered.
  * Renders nothing otherwise.
  */
-export function RoutineRequestsHomeCard({ enabled, familyId, userId, isAdmin, onOpen }: {
-  enabled: boolean;
-  familyId: string | null;
-  userId: string | null;
-  isAdmin: boolean;
-  onOpen: () => void;
-}) {
-  const [count, setCount] = useState(0);
-
-  const refresh = useCallback(() => {
-    if (!enabled || !familyId || !userId) return;
-    listRoutineChangeRequests(familyId)
-      .then((rows) => setCount(routineRequestsWaitingFor(rows, userId, isAdmin)))
-      .catch(() => { /* offline: keep what we have */ });
-  }, [enabled, familyId, userId, isAdmin]);
-
-  useEffect(() => {
-    if (!enabled) { setCount(0); return undefined; }
-    refresh();
-    const timer = setInterval(() => { if (AppState.currentState === 'active') refresh(); }, ROUTINE_REQUESTS_HOME_REFRESH_MS);
-    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refresh(); });
-    return () => { clearInterval(timer); sub.remove(); };
-  }, [enabled, refresh]);
-
+export function RoutineRequestsHomeCard({ count, onOpen }: { count: number; onOpen: () => void }) {
   if (count === 0) return null;
   const label = count === 1 ? 'בקשה לשינוי בשגרה ממתינה לך' : `${count} בקשות לשינוי בשגרה ממתינות לך`;
   return (
