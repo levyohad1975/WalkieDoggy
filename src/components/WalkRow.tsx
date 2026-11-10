@@ -63,6 +63,12 @@ interface WalkRowProps {
   /** History-only visual density: keep time prominent, soften identity text, and omit redundant completion copy. */
   historyCompact?: boolean;
   hidePendingStatus?: boolean;
+  /**
+   * History (owner request 2026-11-10): a walk nobody has reported yet shows
+   * one small "ממתין לעדכון" chip instead of the status glyph; the row's
+   * onPress opens the done / not-done choice (no big buttons on the row).
+   */
+  awaitingUpdate?: boolean;
   routeSession?: WalkGpsSession;
 }
 
@@ -131,6 +137,7 @@ export function WalkRow({
   requestStatusLine,
   historyCompact = false,
   hidePendingStatus = false,
+  awaitingUpdate = false,
   routeSession,
 }: WalkRowProps) {
   const overdue = isOverdue(walk);
@@ -213,7 +220,13 @@ export function WalkRow({
 
         {hidePendingStatus && walk.status === 'pending' && !overdue ? null : (
           <View style={[styles.leftBlock, historyCompact && styles.historyStatusColumn]}>
-            <StatusBadge status={walk.status} overdue={overdue} glyphOnly={historyCompact} />
+            {awaitingUpdate ? (
+              <View style={styles.awaitingChip}>
+                <RtlText style={styles.awaitingChipText} numberOfLines={1}>ממתין לעדכון</RtlText>
+              </View>
+            ) : (
+              <StatusBadge status={walk.status} overdue={overdue} glyphOnly={historyCompact} />
+            )}
             {completionLine && !historyCompact ? (
               <RtlText style={styles.completionText} numberOfLines={1} ellipsizeMode="tail">
                 {completionLine}
@@ -351,6 +364,8 @@ export function WalkRow({
 const WALK_ROW_DATE_TIME_MAX_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  awaitingChip: { backgroundColor: '#FFF1E2', borderColor: '#F08A24', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  awaitingChipText: { fontSize: 11, fontWeight: '800', color: '#B35C00', textAlign: 'center' },
   row: {
     gap: 7,
     backgroundColor: colors.surface,

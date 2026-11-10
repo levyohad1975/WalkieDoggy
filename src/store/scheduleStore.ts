@@ -753,7 +753,20 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // round-trips bottleneck this fix targets. The OLD (locked) entry
       // and its already-resolved walk are never touched — they remain
       // exactly as they were, preserved as history.
-      const allNewEntries = [...toAdd, ...toRegenerate];
+      // Field report 2026-11-10: moving a rule from 08:00 to 07:30 at 12:55,
+      // after today's 08:00 walk was already done, regenerated a SECOND walk
+      // for today at 07:30 — a slot that had already gone by, left pending
+      // forever. Same rule as the load-time self-heal
+      // (planStaleRuleEntryReconciliation): today's resolved occurrence gets
+      // a new one only if the new time is still ahead.
+      const nowMs = Date.now();
+      const regenerate = toRegenerate.filter((entry) => {
+        if (entry.date !== today) return true;
+        const [h, m] = entry.time.split(':').map(Number);
+        const [y, mo, d] = today.split('-').map(Number);
+        return new Date(y, mo - 1, d, h, m, 0, 0).getTime() >= nowMs;
+      });
+      const allNewEntries = [...toAdd, ...regenerate];
       if (allNewEntries.length > 0) await repository.addScheduleEntries(allNewEntries);
       const newWalks = allNewEntries
         .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, updatedRule.familyId))
