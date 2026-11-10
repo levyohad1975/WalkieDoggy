@@ -272,9 +272,11 @@ export type SyncOperation =
   | { type: 'updateScheduleEntry'; payload: ScheduleEntry }
   | { type: 'deleteScheduleEntry'; payload: { entryId: string } }
   | { type: 'saveWalk'; payload: Walk }
+  | { type: 'editResolvedWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
   | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
-  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
+  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } }
+  | { type: 'updateUserChatNotificationSetting'; payload: { userId: string; enabled: boolean } };
 
 type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
 
@@ -311,7 +313,8 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertUser':
     case 'deleteUser':
     case 'updateUserReminderSetting':
-    case 'updateUserGamificationSetting': return '/rest/v1/users';
+    case 'updateUserGamificationSetting':
+    case 'updateUserChatNotificationSetting': return '/rest/v1/users';
     case 'deleteFamilyMember': return '/rest/v1/rpc/admin_delete_family_member';
     case 'upsertDog': return '/rest/v1/dogs';
     case 'upsertHealthTask': return '/rest/v1/health_tasks';
@@ -324,6 +327,7 @@ function operationEndpoint(op: SyncOperation): string {
     case 'updateScheduleEntry': return '/rest/v1/schedule_entries';
     case 'deleteScheduleEntry': return '/rest/v1/rpc/delete_schedule_entry_idempotent';
     case 'saveWalk':
+    case 'editResolvedWalk':
     case 'deleteWalk': return '/rest/v1/walks';
   }
 }
@@ -1008,12 +1012,16 @@ export class SyncQueue {
         return remote.deleteScheduleEntry(op.payload.entryId);
       case 'saveWalk':
         return remote.saveWalk(op.payload);
+      case 'editResolvedWalk':
+        return remote.editResolvedWalkDetails ? remote.editResolvedWalkDetails(op.payload) : remote.saveWalk(op.payload);
       case 'deleteWalk':
         return remote.deleteWalk?.(op.payload.walkId);
       case 'updateUserReminderSetting':
         return remote.updateUserReminderSetting(op.payload.userId, op.payload.enabled);
       case 'updateUserGamificationSetting':
         return remote.updateUserGamificationSetting(op.payload.userId, op.payload.enabled);
+      case 'updateUserChatNotificationSetting':
+        return remote.updateUserChatNotificationSetting(op.payload.userId, op.payload.enabled);
     }
   }
 }

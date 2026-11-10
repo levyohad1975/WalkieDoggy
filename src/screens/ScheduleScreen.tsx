@@ -570,6 +570,7 @@ export function ScheduleScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearActionError}
         onCancel={clearActionError}
+        hideCancel
       />
 
       {/*
@@ -658,6 +659,7 @@ export function ScheduleScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
+        hideCancel
       />
     </SafeAreaView>
   );

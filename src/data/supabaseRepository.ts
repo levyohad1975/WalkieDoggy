@@ -55,6 +55,7 @@ function toUser(row: any): FamilyUser {
     color: row.color,
     remindersEnabled: row.reminders_enabled,
     gamificationEnabled: row.gamification_enabled,
+    chatNotificationsEnabled: row.chat_notifications_enabled ?? true,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -362,6 +363,15 @@ function fromDog(dog: Dog) {
  * (and never should) pass an arbitrary family_id from the client as a
  * security boundary; it's used for display/filtering only.
  */
+/** Later of two ISO timestamps (either may be missing). */
+function latestIso(a: string | null | undefined, b: string | null | undefined): string | undefined {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta)) return Number.isNaN(tb) ? undefined : b ?? undefined;
+  if (Number.isNaN(tb)) return a ?? undefined;
+  return ta >= tb ? a ?? undefined : b ?? undefined;
+}
+
 export class SupabaseRepository implements Repository {
   constructor(private client: SupabaseClient) {}
 
@@ -453,9 +463,27 @@ export class SupabaseRepository implements Repository {
    * `createUser`'s own documented behavior).
    */
   async upsertUser(user: FamilyUser): Promise<void> {
+    // COLUMN-PRIVILEGE CORRECTION (field report 2026-11-06: a member profile
+    // photo could not be saved — "לא הצלחנו להחליף תמונה"; the Storage upload
+    // actually SUCCEEDED, but persisting photo_url failed). Migration 0016
+    // deliberately revoked table-wide UPDATE on public.users from
+    // `authenticated` and re-granted it only per-column on the editable
+    // profile columns (name, avatar, photo_url, color, reminders_enabled,
+    // removed_at; gamification_enabled via 0052) — id/family_id/role/pin_hash/
+    // auth_user_id are intentionally NOT updatable by the client. Postgres
+    // rejects the ENTIRE update (42501 "permission denied for table users")
+    // when the SET list names any column the role can't update, and
+    // `fromUser()` includes `id` and `family_id`. They never change for an
+    // existing member (id is the WHERE key; family_id is immutable here), so
+    // omit them from the UPDATE SET — the update then touches only granted
+    // columns and the RLS UPDATE policy (self-or-admin, active) still gates
+    // it. INSERT still uses the full row (its own per-column INSERT grants and
+    // admin-only policy apply, exactly as before). Dog photos were unaffected
+    // because `dogs` keeps a table-wide grant.
+    const { id: _id, family_id: _familyId, ...updatable } = fromUser(user);
     const { data, error } = await this.client
       .from('users')
-      .update(fromUser(user))
+      .update(updatable)
       .eq('id', user.id)
       .select('id');
     if (error) throw error;
@@ -473,9 +501,14 @@ export class SupabaseRepository implements Repository {
    * UI can claim success.
    */
   async updateUserProfile(user: FamilyUser): Promise<void> {
+    // Same column-privilege rule as upsertUser: id/family_id are not
+    // client-updatable (migration 0016), so naming them fails the whole
+    // UPDATE with 42501 (field report 2026-11-10: the photo uploaded but the
+    // profile never saved).
+    const { id: _id, family_id: _familyId, ...updatable } = fromUser(user);
     const { data, error } = await this.client
       .from('users')
-      .update(fromUser(user))
+      .update(updatable)
       .eq('id', user.id)
       .select('id');
     if (error) throw error;
@@ -515,6 +548,11 @@ export class SupabaseRepository implements Repository {
 
   async updateUserReminderSetting(userId: string, enabled: boolean): Promise<void> {
     const { error } = await this.client.from('users').update({ reminders_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
+  async updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ chat_notifications_enabled: enabled }).eq('id', userId);
     if (error) throw error;
   }
 
@@ -622,7 +660,7 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
     const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
     const { data: ownerRows, error: ownerError } = await this.client.from('walk_gps_ownership')
-      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at').in('walk_id', walkIds);
+      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at,updated_at').in('walk_id', walkIds);
     // Pre-v1.1 server: return the legacy sessions instead of failing the whole
     // read (which made History/Statistics silently fall back to device-only data).
     if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
@@ -667,6 +705,11 @@ export class SupabaseRepository implements Repository {
         createdByUserId: existing?.createdByUserId,
         createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
         updatedAt: existing?.updatedAt ?? owner.route_ended_at ?? owner.route_started_at ?? '',
+        // The walker's device heartbeats this row every ~15s while it holds
+        // the GPS lease, even when the dog stands still and no new point is
+        // written; family devices use it to tell live tracking from a
+        // session that stopped when the walker's phone locked.
+        liveUpdatedAt: latestIso(owner.updated_at, existing?.updatedAt),
       });
     }
     return [...sessions.values()];
@@ -1089,6 +1132,11 @@ export class SupabaseRepository implements Repository {
     return data;
   }
 
+  async recordWalkEventCountsV1(walkId: string, counts: { pee: number; poop: number }): Promise<void> {
+    const { error } = await this.client.rpc('record_walk_event_counts_v1', { p_walk_id: walkId, p_pee_count: counts.pee, p_poop_count: counts.poop });
+    if (error) throw lifecycleRpcError('record_walk_event_counts_v1', error);
+  }
+
   async releaseGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<void> {
     const { error } = await this.client.rpc('release_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
     if (error) throw lifecycleRpcError('release_walk_gps_ownership_v11', error);
@@ -1119,6 +1167,36 @@ export class SupabaseRepository implements Repository {
       throw Object.assign(new Error('GPS reconstruction server migration is not installed yet'), { syncQueueRetryable: true });
     }
     if (error) throw error;
+  }
+
+  /**
+   * Edit the detail fields of an already-resolved (done/skipped) walk, by id.
+   * Unlike saveWalk()'s done-branch — which only UPDATEs a still-'pending' row
+   * and otherwise no-ops to protect a concurrent completion — this is a
+   * deliberate correction of an existing resolved walk, so it updates that row
+   * directly. Only the editable columns are written, so the server's
+   * walk-write-authorization trigger (responsible member or admin) applies and
+   * no protected field (date/time/responsible/schedule link) is ever touched.
+   */
+  async editResolvedWalkDetails(walk: Walk): Promise<void> {
+    const { data, error, status } = await withTimeout(
+      this.client.from('walks').update({
+        had_pee: walk.hadPee ?? null,
+        had_poop: walk.hadPoop ?? null,
+        pee_count: walk.peeCount ?? null,
+        poop_count: walk.poopCount ?? null,
+        note: walk.note ?? null,
+        completed_at: walk.completedAt ?? null,
+        completed_by_user_id: walk.completedByUserId ?? null,
+        duration_minutes: walk.durationMinutes ?? null,
+      }).eq('id', walk.id).select('id'),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'walks edit resolved details',
+    );
+    if (error) throw Object.assign(error, { status });
+    // No row matched — the walk isn't on the server yet (e.g. created offline).
+    // Fall back to the full save path, which inserts it.
+    if (!data || data.length === 0) await this.saveWalk(walk);
   }
 
   async saveWalk(walk: Walk): Promise<void> {

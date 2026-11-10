@@ -37,3 +37,20 @@ describe('HomeScreen — last walk pee/poop spacing', () => {
     expect(source).toContain("dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 72,");
   });
 });
+
+
+describe('HomeScreen — last walk card never shows a skipped walk as performed', () => {
+  const source: string = require('fs').readFileSync(require.resolve('../HomeScreen'), 'utf8');
+
+  it('derives a skipped flag for the last walk', () => {
+    expect(source).toContain("const isSkipped = lastWalk.status === 'skipped';");
+  });
+
+  it('shows "לא בוצע" for a skipped last walk instead of "✓ בוצע <time>"', () => {
+    expect(source).toContain("{isSkipped ? '✕ לא בוצע' : `✓ בוצע ${actualCompletedTime}`}");
+  });
+
+  it('does not attribute a skipped walk to a performer ("אחראי/ת", not "בוצע ע״י")', () => {
+    expect(source).toContain("{isSkipped ? 'אחראי/ת' : 'בוצע ע״י'}");
+  });
+});

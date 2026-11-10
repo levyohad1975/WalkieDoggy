@@ -64,7 +64,7 @@ export function SettingsScreen() {
 }
 
 function SettingsScreenContent() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setChatNotificationsEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
@@ -1100,6 +1100,7 @@ function SettingsScreenContent() {
         effectiveFamilyRole={effectiveFamilyRole}
         effectiveUserId={effectiveUserId}
         onSetReminderEnabled={setReminderEnabled}
+        onSetChatNotificationsEnabled={setChatNotificationsEnabled}
         onClose={() => setRemindersModalVisible(false)}
       />
 

@@ -161,6 +161,7 @@ export interface Repository {
   updateUserReminderSetting(userId: string, enabled: boolean): Promise<void>;
   /** PRD §9 gamification off-switch — per-user/device, same shape as updateUserReminderSetting. */
   updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void>;
+  updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void>;
 
   /** @deprecated Returns an arbitrary one of the family's dogs once more than one exists (kept only for the single-dog call sites that predate multi-dog support). New code should use getDogs. */
   getDog(familyId: string): Promise<Dog | undefined>;
@@ -213,6 +214,8 @@ export interface Repository {
   /** Direct authenticated RPC only; intentionally never enters the offline SyncQueue. */
   resolveDuplicateActiveWalksV12?(request: ResolveDuplicateActiveWalksRequest): Promise<string>;
   saveWalk(walk: Walk): Promise<void>;
+  /** Edit the detail fields (pee/poop + count, note, completion time/walker) of an ALREADY-resolved walk, by id. Separate from saveWalk so it can never be confused with a completion write. Optional: only the Supabase/offline repositories implement it. */
+  editResolvedWalkDetails?(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
   /**
@@ -234,6 +237,8 @@ export interface Repository {
   acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
   releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
   heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
+  /** Actual walker publishes running pee/poop totals for their in-progress walk (server: record_walk_event_counts_v1). Optional: older servers lack it. */
+  recordWalkEventCountsV1?(walkId: string, counts: { pee: number; poop: number }): Promise<void>;
   appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
   /** Offline-first local cache plus estimate-only fenced synchronization. */
   saveGpsReconstructionV1?(session: WalkGpsSession): Promise<void>;

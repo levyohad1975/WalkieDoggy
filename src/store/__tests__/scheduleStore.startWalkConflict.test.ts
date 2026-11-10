@@ -152,6 +152,29 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
     warnings.mockRestore();
   });
 
+  it('blocks starting a future scheduled walk more than 30 minutes early (client gate)', async () => {
+    const futureWalk = fakeWalk({ date: '2099-01-01', scheduledTime: '23:59' });
+    useScheduleStore.setState({ walks: [futureWalk], actionError: null });
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(started).toBe(false);
+    expect(mockedRepository.startWalk).not.toHaveBeenCalled();
+    expect(useScheduleStore.getState().actionError).toContain('ניתן להתחיל את הטיול החל');
+  });
+
+  it('lets a spontaneous association bypass the early-start gate (allowEarlyStart)', async () => {
+    // Field report 2026-11-05: starting a spontaneous walk now and choosing to
+    // replace a scheduled slot >30 min away raised "ניתן להתחיל את הטיול החל מ…".
+    const futureWalk = fakeWalk({ date: '2099-01-01', scheduledTime: '23:59' });
+    useScheduleStore.setState({ walks: [futureWalk], actionError: null });
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockResolvedValue({ ...futureWalk, status: 'in_progress', startedAt: new Date().toISOString() });
+    const started = await useScheduleStore.getState().startWalk('walk-x', { startGps: false, allowEarlyStart: true });
+    expect(started).toBe(true);
+    expect(mockedRepository.startWalk).toHaveBeenCalledWith('walk-x');
+    expect(useScheduleStore.getState().actionError).toBeNull();
+    expect(useScheduleStore.getState().walks[0].status).toBe('in_progress');
+  });
+
   it('finalizes GPS after a successful walk completion even if notification cleanup rejects', async () => {
     const completed = { ...fakeWalk({ status: 'in_progress', startedAt: new Date().toISOString() }), status: 'done' as const };
     useScheduleStore.setState({ walks: [completed], actionError: null });

@@ -11,17 +11,21 @@ describe('RemoteGpsPanel target-device contract',()=>{
   expect(source).toContain('walk_not_started');
   expect(source).toMatch(/getMyRemoteGpsCommands\(\)/);
  });
- it('requires an explicit target-device tap and a real GPS fix before reporting tracking',()=>{
-  const button=source.indexOf('const activatePendingGps=useCallback');
+ it('requires a tap (or already-granted permission with standing consent) and a real GPS fix before reporting tracking',()=>{
+  const button=source.indexOf('const activateRemoteCommand=useCallback');
   const start=source.indexOf('useGpsStore.getState().startTracking(walk)',button);
   const check=source.indexOf("gps.permissionStatus==='granted'&&gps.pointCount>0",start);
-  const ack=source.indexOf('acknowledgeRemoteGpsStart(command.command_id,tracking',check);
+  const ack=source.indexOf('acknowledgeRemoteGpsStart(cmd.command_id,tracking',check);
   expect(start).toBeGreaterThan(-1);
   expect(check).toBeGreaterThan(start);
   expect(ack).toBeGreaterThan(check);
   expect(source).toContain('waitForFirstGpsFix(walk.id)');
   expect(source).toContain('אישור והפעלת GPS במכשיר הזה');
   expect(source).not.toContain('startWalk(walk.id');
+  // Owner request 2026-11-04: auto-start only with permission already granted
+  // (or this device already tracking), once per command, behind consent.
+  expect(source).toMatch(/!settings\?\.familyEnabled\|\|!settings\.consentEnabled\)return;/);
+  expect(source).toMatch(/if\(alreadyTracking\|\|await isGeolocationAlreadyGranted\(\)\)\{\n\s*autoAttemptedRef\.current\.add\(pending\.command_id\);/);
  });
  it('shows a persistent accessible remote tracking message and a target stop control',()=>{
   expect(source).toContain('מעקב GPS הופעל מרחוק על ידי מנהל המשפחה');

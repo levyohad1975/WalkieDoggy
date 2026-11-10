@@ -67,6 +67,11 @@ jest.mock('../../store/familyStore', () => {
   return { useFamilyStore: Object.assign(hook, { getState: () => mockFamilyState }) };
 });
 jest.mock('react-native-svg', () => ({ __esModule: true, default: 'Svg', Circle: 'Circle', Polyline: 'Polyline' }));
+const mockGeolocationGranted = jest.fn();
+jest.mock('../../lib/gpsResumeMarker', () => ({
+  ...jest.requireActual('../../lib/gpsResumeMarker'),
+  isGeolocationAlreadyGranted: () => mockGeolocationGranted(),
+}));
 
 const repository = require('../../data').repository as Record<string, jest.Mock>;
 const remoteGps = require('../../lib/remoteGps') as Record<string, jest.Mock>;
@@ -196,6 +201,8 @@ beforeEach(() => {
   // A family with Remote GPS enabled and this walker's consent on: the
   // poller is live on Home, exactly as on the tester's Staging family.
   remoteGps.getRemoteGpsSettings.mockResolvedValue({ familyEnabled: true, consentEnabled: true, isAdmin: false });
+  // Default: permission state unknown, so the explicit-tap path applies.
+  mockGeolocationGranted.mockResolvedValue(false);
   remoteGps.getMyRemoteGpsCommands.mockResolvedValue([]);
   repository.getWalkAuthoritative.mockResolvedValue(walk);
   remoteGps.getRemoteGpsWalkStatus.mockResolvedValue([]);
@@ -424,6 +431,50 @@ describe('Remote GPS sessions keep their own lifecycle', () => {
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'remote', pointCount: 2 });
     expect(repository.appendGpsRouteV11).toHaveBeenCalled();
     expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
+  });
+
+  // Owner request 2026-11-04: standing consent is the approval; no fresh tap per walk.
+  it('starts remote GPS automatically, once, when consent is on and location is already granted', async () => {
+    const safari = installSafariWatch();
+    mockGeolocationGranted.mockResolvedValue(true);
+    const pendingCommand = { ...serverActiveCommand, command_id: 'cmd-auto' };
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([pendingCommand]);
+    repository.getWalkAuthoritative.mockResolvedValue(walk);
+    render(<RemoteGpsPanel currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+
+    expect(mockStartGpsWatch).toHaveBeenCalledTimes(1);
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await flush(20);
+
+    expect(remoteGps.acknowledgeRemoteGpsStart).toHaveBeenCalledWith('cmd-auto', true, undefined);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'remote', pointCount: 2 });
+    await advance(6_000);
+    expect(mockStartGpsWatch).toHaveBeenCalledTimes(1);
+    expect(remoteGps.acknowledgeRemoteGpsStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('never auto-starts without the walker\'s consent, and keeps the tap when permission is unknown', async () => {
+    installSafariWatch();
+    mockGeolocationGranted.mockResolvedValue(true);
+    remoteGps.getRemoteGpsSettings.mockResolvedValue({ familyEnabled: true, consentEnabled: false, isAdmin: false });
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([{ ...serverActiveCommand, command_id: 'cmd-no-consent' }]);
+    repository.getWalkAuthoritative.mockResolvedValue(walk);
+    const view = render(<RemoteGpsPanel currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+    await advance(6_000);
+    expect(mockStartGpsWatch).not.toHaveBeenCalled();
+    expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalled();
+    view.unmount();
+
+    remoteGps.getRemoteGpsSettings.mockResolvedValue({ familyEnabled: true, consentEnabled: true, isAdmin: false });
+    mockGeolocationGranted.mockResolvedValue(false);
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([{ ...serverActiveCommand, command_id: 'cmd-needs-tap' }]);
+    render(<RemoteGpsPanel currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+    expect(mockStartGpsWatch).not.toHaveBeenCalled();
+    expect(screen.getByText('אישור והפעלת GPS במכשיר הזה')).toBeTruthy();
   });
 
   it('uses the current server walk lifecycle when the local schedule says the walk is already done', async () => {
@@ -690,7 +741,7 @@ describe('Remote GPS requests use authoritative walk lifecycle state', () => {
 
     expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalledWith('cmd-server-active', false, 'walk_not_started');
     expect(screen.getByText('אישור והפעלת GPS במכשיר הזה')).toBeTruthy();
-    expect(screen.getByText('בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.')).toBeTruthy();
+    expect(screen.getByText('מנהל המשפחה ביקש להפעיל GPS בטיול הזה.')).toBeTruthy();
   });
 
   it('keeps and offers approval for a valid pending command while the local schedule row is unavailable', async () => {
@@ -701,7 +752,7 @@ describe('Remote GPS requests use authoritative walk lifecycle state', () => {
     await flush();
 
     expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalled();
-    expect(screen.getByText('בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.')).toBeTruthy();
+    expect(screen.getByText('מנהל המשפחה ביקש להפעיל GPS בטיול הזה.')).toBeTruthy();
     expect(repository.getWalkAuthoritative).toHaveBeenCalledWith(walk.familyId, walk.id);
     expect(screen.getByText('אישור והפעלת GPS במכשיר הזה')).toBeTruthy();
   });
@@ -733,13 +784,13 @@ describe('An admin who is ALSO the actual walker on this device is never treated
   it('does not offer to request remote GPS from the walker\'s device when the admin IS that walker', async () => {
     render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />);
     await flush();
-    expect(screen.queryByText('📍 בקש אישור GPS ממכשיר המטייל/ת')).toBeNull();
+    expect(screen.queryByText('📍 הפעל GPS במכשיר המטייל/ת')).toBeNull();
   });
 
   it('still offers a genuinely different admin the remote-request action for this same walk', async () => {
     const otherAdmin = 'user-other-admin';
     render(<RemoteGpsPanel walk={walk} currentUserId={otherAdmin} familyRole="admin" ready mode="home" />);
     await flush();
-    expect(screen.getByText('📍 בקש אישור GPS ממכשיר המטייל/ת')).toBeTruthy();
+    expect(screen.getByText('📍 הפעל GPS במכשיר המטייל/ת')).toBeTruthy();
   });
 });

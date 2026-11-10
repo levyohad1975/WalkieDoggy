@@ -16,8 +16,11 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
 
   it('renders a server-persisted remote GPS session and its route without depending on this device\'s gpsStore watch', () => {
     expect(source).toMatch(/remoteGpsSession\?: WalkGpsSession \| null;/);
-    expect(source).toMatch(/remoteGpsSession && remoteGpsSession\.pointCount > 0/);
+    expect(source).toMatch(/remoteGpsFreshnessState\.kind !== 'none' && remoteGpsSession/);
     expect(source).toContain('GPS פעיל במכשיר המטייל/ת');
+    // Field report 2026-11-04: a session whose walker device went quiet must
+    // not keep telling the family that GPS is active.
+    expect(source).toContain('GPS לא עודכן מאז');
     expect(source).toMatch(/liveRoutePoints \?\? remoteGpsSession\?\.routePoints \?\? \[\]/);
   });
 
@@ -58,9 +61,14 @@ describe('NextWalkCard — active walk with no GPS session on this device (struc
   const home = fs.readFileSync(require.resolve('../../screens/HomeScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('states the real condition before any tracking status, and offers an explicit activation tap to the walker', () => {
-    const statusStart = card.indexOf(': gpsNotTrackedHere === \'walker_here\'');
+    const statusStart = card.indexOf('{gpsNotTrackedHere === \'walker_here\'');
     expect(statusStart).toBeGreaterThan(-1);
     expect(statusStart).toBeLessThan(card.indexOf('gpsTrackingStatus === \'requesting\''));
+    // Field report 2026-11-04: after an iPhone relaunch mid-walk the server
+    // already held this device's earlier points; that must not hide the
+    // walker's own "not tracking here" state or its activation button.
+    expect(statusStart).toBeLessThan(card.indexOf("remoteGpsFreshnessState.kind !== 'none'"));
+    expect(card).not.toMatch(/!remoteGpsSession\?\.pointCount && onRetryGps/);
     expect(card).toContain('GPS לא פעיל במכשיר הזה');
     expect(card).toContain('ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול');
     expect(card).toMatch(/onRetryGps && gpsNotTrackedHere === 'walker_here' \? \(\s*<Pressable onPress=\{onRetryGps\}/);

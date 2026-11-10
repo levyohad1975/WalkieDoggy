@@ -24,6 +24,11 @@ describe('App presence heartbeat', () => {
     expect(app).toContain('if (!isSupabaseConfigured || !currentUserId || systemObserverActive) return;');
     expect(app).toContain("if (AppState.currentState !== 'active') return;");
     expect(app).toContain('if (useAuthStore.getState().systemObserverActive) return;');
-    expect(app).toMatch(/void touchLastSeen\(\)\.catch\(\(\) => undefined\);\n\s*\}, PRESENCE_HEARTBEAT_MS\);\n\s*return \(\) => clearInterval\(timer\);\n\s*\}, \[currentUserId, systemObserverActive\]\);/);
+    expect(app).toMatch(/const beat = \(\) => \{[\s\S]{0,240}void touchLastSeen\(\)\.catch\(\(\) => undefined\);\n\s*\};/);
+    expect(app).toMatch(/const timer = setInterval\(beat, PRESENCE_HEARTBEAT_MS\);\n\s*return \(\) => clearInterval\(timer\);\n\s*\}, \[currentUserId, systemObserverActive\]\);/);
+  });
+
+  it('beats immediately once a profile is active, not only after the first interval (Production 2026-11-04)', () => {
+    expect(app).toMatch(/\n\s*beat\(\);\n\s*const timer = setInterval\(beat, PRESENCE_HEARTBEAT_MS\);/);
   });
 });

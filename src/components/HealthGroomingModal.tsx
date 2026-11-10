@@ -16,11 +16,20 @@ import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
 const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming'];
 const VET_PURPOSES = ['בדיקה', 'חיסון כלבת', 'חיסון משושה', 'תילוע', 'תולעת הפארק', 'פרעושים/קרציות', 'בדיקות/מעבדה', 'אחר'] as const;
 
-function taskTypeLabel(task: HealthTask): string {
-  // Appointment rows use their explicit title/purpose as the human-facing
-  // type. Showing the broad persisted category as well (for example a
-  // haircut titled "תספורת" but carrying a legacy vaccination category)
-  // creates a contradictory subtitle in the list.
+export function taskTypeLabel(task: HealthTask): string {
+  // For the two CURRENT appointment categories the persisted category is set by
+  // the form and always accurate, so surface it — otherwise a vet appointment
+  // whose purpose text happens to read like grooming is mistaken for one (field
+  // report 2026-11-06: a vet "אחר: תספורת" appeared as a haircut, with no
+  // "וטרינר" anywhere). The caller shows this only when it differs from the
+  // title, so grooming (title always "תספורת") stays non-redundant while every
+  // vet row now reads "וטרינר".
+  if (task.category === 'vet_visit' || task.category === 'grooming') {
+    return CATEGORY_LABELS[task.category];
+  }
+  // Legacy rows may carry a mismatched broad category (e.g. a haircut stored
+  // under a legacy vaccination category), so keep using the explicit title to
+  // avoid a contradictory subtitle.
   if (task.title.trim()) return task.title.trim();
   return CATEGORY_LABELS[task.category];
 }

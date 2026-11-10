@@ -120,7 +120,7 @@ describe('lib/chatLocal — demo-mode transport mirrors the server contract', ()
   const signInAs = (userId: string, role: 'admin' | 'member' = 'member') =>
     useAuthStore.setState({ currentUserId: userId, familyId: 'family-main', familyRole: role });
   const member = (id: string, removedAt?: string) =>
-    ({ id, familyId: 'family-main', name: id, avatar: '🙂', color: '#000000', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z', removedAt });
+    ({ id, familyId: 'family-main', name: id, avatar: '🙂', color: '#000000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: '2026-01-01T00:00:00.000Z', removedAt });
   const image = { uri: 'blob:x', mime: 'image/jpeg', width: 800, height: 600, size: 1000 };
 
   beforeEach(async () => {

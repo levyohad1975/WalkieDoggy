@@ -16,6 +16,7 @@ import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
 import { formatDistanceMeters } from '../logic/gpsDistance';
 import { RoutePreview } from './RoutePreview';
+import { localClockLabel, remoteGpsFreshness } from '../logic/remoteGpsFreshness';
 import type { GpsTrackingStatus } from '../lib/gpsTracking';
 
 interface NextWalkCardProps {
@@ -203,6 +204,8 @@ export function NextWalkCard({
   }, [activeStartedAt, isActive, walkerBob]);
 
   const elapsedLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
+  // Re-evaluated on every elapsed-timer tick while the walk is active.
+  const remoteGpsFreshnessState = remoteGpsFreshness(remoteGpsSession);
 
   // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
   // message, centrally derived (mascotStage.ts) from how far `walk` is from
@@ -286,10 +289,16 @@ export function NextWalkCard({
       {isActive ? (
         <>
         <RtlText style={styles.gpsStatusLine} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} accessibilityLiveRegion="polite">
-          {remoteGpsSession && remoteGpsSession.pointCount > 0
-            ? `📍 GPS פעיל במכשיר המטייל/ת${remoteGpsSession.distanceMeters != null ? ` · ${formatDistanceMeters(remoteGpsSession.distanceMeters)}` : ''}`
-            : gpsNotTrackedHere === 'walker_here'
+          {/* The walker's own device must hear that IT is not tracking, even
+              when the server already holds earlier points from it: after an
+              iPhone relaunch mid-walk the old session made this line read
+              "GPS פעיל" and hid the resume button (field report 2026-11-04). */}
+          {gpsNotTrackedHere === 'walker_here'
             ? '📍 GPS לא פעיל במכשיר הזה'
+            : remoteGpsFreshnessState.kind !== 'none' && remoteGpsSession
+            ? remoteGpsFreshnessState.kind === 'stale'
+              ? `📍 GPS לא עודכן מאז ${localClockLabel(remoteGpsFreshnessState.lastUpdateAt)}${remoteGpsSession.distanceMeters != null ? ` · ${formatDistanceMeters(remoteGpsSession.distanceMeters)}` : ''}`
+              : `📍 GPS פעיל במכשיר המטייל/ת${remoteGpsSession.distanceMeters != null ? ` · ${formatDistanceMeters(remoteGpsSession.distanceMeters)}` : ''}`
             : gpsNotTrackedHere === 'elsewhere'
               ? '📍 ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול'
           : gpsTrackingStatus === 'requesting'
@@ -312,12 +321,12 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
-        {!remoteGpsSession?.pointCount && gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
+        {gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
           <RtlText style={styles.gpsDiagnostic} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} testID="gps-last-stop-diagnostic">
             {`אבחון GPS: ${gpsLastStopLabel}`}
           </RtlText>
         ) : null}
-        {!remoteGpsSession?.pointCount && onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
+        {onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
           <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="הפעל GPS לטיול הזה במכשיר הזה" style={styles.gpsRetry}>
             <RtlText style={styles.gpsRetryText}>הפעל GPS</RtlText>
           </Pressable>

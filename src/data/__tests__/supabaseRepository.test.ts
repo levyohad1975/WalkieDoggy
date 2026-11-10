@@ -45,24 +45,50 @@ function makeMockClient(opts: { updateMatches?: boolean } = {}) {
 }
 
 describe('SupabaseRepository — writes carry the correct familyId', () => {
-  it('upsertUser sends family_id mapped from user.familyId', async () => {
-    const { client, calls } = makeMockClient();
-    const repo = new SupabaseRepository(client);
+  it('upsertUser maps family_id onto the INSERT fallback row', async () => {
     const user: FamilyUser = {
       id: 'user-1',
       familyId: 'fam-42',
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
+    };
+
+    // Force the INSERT fallback (no existing row matched) — that path carries
+    // the full row, where family_id is mapped from user.familyId.
+    const { client, calls } = makeMockClient({ updateMatches: false });
+    await new SupabaseRepository(client).upsertUser(user);
+
+    expect(calls.map((c) => c.method)).toEqual(['update', 'insert']);
+    expect((calls[1].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertUser UPDATE omits id and family_id — columns `authenticated` cannot update (42501 column-privilege fix, field report 2026-11-06)', async () => {
+    // Migration 0016 revoked table-wide UPDATE on users and re-granted it only
+    // per editable column (name/avatar/photo_url/color/reminders_enabled/
+    // removed_at). Postgres rejects the whole UPDATE when the SET list names a
+    // non-granted column, so a member photo save failed AFTER a successful
+    // Storage upload. The UPDATE must set only editable columns.
+    const { client, calls } = makeMockClient({ updateMatches: true });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'user-1', familyId: 'fam-42', name: 'אבא', avatar: '👨',
+      photoUrl: 'https://cdn.example/a.jpg', color: '#5B8DEF',
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString(),
     };
 
     await repo.upsertUser(user);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].table).toBe('users');
-    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].method).toBe('update');
+    const payload = calls[0].payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('id');
+    expect(payload).not.toHaveProperty('family_id');
+    // Editable columns are still present.
+    expect(payload.name).toBe('אבא');
+    expect(payload.photo_url).toBe('https://cdn.example/a.jpg');
   });
 
   /**
@@ -88,7 +114,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       photoUrl: 'https://cdn.example/member.jpg',
       color: '#5B8DEF',
       remindersEnabled: true,
-      gamificationEnabled: true,
+      gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -113,6 +139,10 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('update');
     expect((calls[0].payload as any).photo_url).toBe('https://cdn.example/member.jpg');
+    // id/family_id have no column UPDATE grant (migration 0016): naming them
+    // fails the whole statement with 42501 (field report 2026-11-10).
+    expect(calls[0].payload).not.toHaveProperty('id');
+    expect(calls[0].payload).not.toHaveProperty('family_id');
   });
 
   it('rejects an unconfirmed profile update without trying an insert', async () => {
@@ -137,7 +167,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -146,7 +176,9 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('update');
     expect(calls[0].table).toBe('users');
-    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    // The UPDATE SET omits family_id (see the column-privilege test above);
+    // the row is still targeted by its id via .eq('id', ...).
+    expect((calls[0].payload as any).family_id).toBeUndefined();
   });
 
   it('upsertUser falls back to .insert() when .update() matches zero rows (legacy pre-fix queued create)', async () => {
@@ -158,7 +190,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה חדש',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -177,7 +209,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -580,6 +612,50 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     await expect(repo.updateUserGamificationSetting('user-1', true)).rejects.toBeTruthy();
   });
 
+  it('updateUserChatNotificationSetting updates only chat_notifications_enabled for the given userId', async () => {
+    const calls: { table: string; payload: unknown; col: string; val: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        update: (payload: unknown) => ({
+          eq: (col: string, val: unknown) => {
+            calls.push({ table, payload, col, val });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    await repo.updateUserChatNotificationSetting('user-1', false);
+    expect(calls).toEqual([
+      { table: 'users', payload: { chat_notifications_enabled: false }, col: 'id', val: 'user-1' },
+    ]);
+  });
+
+  it('updateUserChatNotificationSetting throws on error', async () => {
+    const client: any = { from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.updateUserChatNotificationSetting('user-1', true)).rejects.toBeTruthy();
+  });
+
+  it('toUser maps chat_notifications_enabled, defaulting a missing value to true', async () => {
+    const baseRow = {
+      id: 'u1', family_id: 'f1', name: 'A', avatar: '🐶', photo_url: null, color: '#fff',
+      reminders_enabled: false, gamification_enabled: true, created_at: '2026-01-01T00:00:00Z',
+    };
+    const client: any = {
+      from: () => ({
+        select: () => ({ eq: () => Promise.resolve({ data: [
+          { ...baseRow, chat_notifications_enabled: false },
+          { ...baseRow, id: 'u2', chat_notifications_enabled: null },
+        ], error: null }) }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const users = await repo.getUsers('f1');
+    expect(users.find((u) => u.id === 'u1')?.chatNotificationsEnabled).toBe(false);
+    expect(users.find((u) => u.id === 'u2')?.chatNotificationsEnabled).toBe(true);
+  });
+
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {
     const { client, calls } = makeMockClient();
     const repo = new SupabaseRepository(client);
@@ -728,13 +804,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
   it('createUser throws when the insert errors (e.g. a non-admin device)', async () => {
     const client: any = { from: () => ({ insert: () => Promise.resolve({ error: { message: '42501' } }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).createUser(user)).rejects.toBeTruthy();
   });
 
   it('upsertUser throws when the conditional update itself errors', async () => {
     const client: any = { from: () => ({ update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 
@@ -745,7 +821,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
         insert: () => Promise.resolve({ error: { message: 'x' } }),
       }),
     };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 

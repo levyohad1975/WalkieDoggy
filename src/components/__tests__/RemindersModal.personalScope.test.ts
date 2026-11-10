@@ -9,8 +9,18 @@ describe('RemindersModal personal notification scope', () => {
   });
 
   it('cannot update another family member from personal notification settings', () => {
-    expect(source).toContain('if (!personalOnly || u.id === effectiveUserId) onSetReminderEnabled(u.id, v);');
-    expect(source).toContain("disabled={effectiveFamilyRole !== 'admin' && u.id !== effectiveUserId}");
+    expect(source).toContain('const canToggle = !personalOnly || u.id === effectiveUserId;');
+    expect(source).toContain("const canEdit = effectiveFamilyRole === 'admin' || u.id === effectiveUserId;");
+    expect(source).toContain('if (canToggle) onSetReminderEnabled(u.id, v);');
+    expect(source).toContain('if (canToggle) onSetChatNotificationsEnabled(u.id, v);');
+    expect(source).toContain('disabled={!canEdit}');
+  });
+
+  it('shows separate walk and chat notification toggles', () => {
+    expect(source).toContain('🚶 התראות טיולים');
+    expect(source).toContain('💬 התראות צ׳אט');
+    expect(source).toContain('value={u.remindersEnabled}');
+    expect(source).toContain('value={u.chatNotificationsEnabled}');
   });
 
   it('retains the existing browser permission, retry/reconciliation, and server-verification flow', () => {

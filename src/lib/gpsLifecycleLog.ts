@@ -20,7 +20,8 @@ export type GpsLifecycleEvent =
   | 'remote_detached'
   | 'stop'
   | 'cancel'
-  | 'finalize_failed';
+  | 'finalize_failed'
+  | 'auto_resume';
 
 export interface GpsLifecycleEntry {
   at: string;

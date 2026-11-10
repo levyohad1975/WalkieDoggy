@@ -5,6 +5,8 @@ import { generateId } from '../lib/id';
 import { startGpsWatch, type GpsPermissionStatus, type GpsTrackingStatus, type GpsWatchHandle } from '../lib/gpsTracking';
 import type { GpsAccumulator } from '../logic/gpsDistance';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
+import { clearGpsTrackingMarker, markGpsTrackingOnThisDevice } from '../lib/gpsResumeMarker';
+import { acquireScreenWakeLock, releaseScreenWakeLock } from '../lib/screenWakeLock';
 import { isPotentialLateGpsStart, reconstructMissingRoute, GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 /**
@@ -295,6 +297,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return;
     }
     activeWatch = result.handle;
+    // The GPS watch is live on this (the walker's) device — keep the screen
+    // awake so iOS does not auto-lock and suspend sampling mid-walk (field
+    // reports 2026-11-05). Best-effort and web-only; released on stop/cancel.
+    acquireScreenWakeLock();
     set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: priorStartedAt ?? trackingStartedAt });
     const deferred = pendingOwnership;
     if (deferred && deferred.walk.id === activeWatchWalkId) {
@@ -330,6 +336,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
           ...(recoveredLease && get().trackingStatus === 'interrupted' && get().pointCount > 0 ? { trackingStatus: 'active' as const } : {}),
         });
         recordGpsLifecycle('lease_acquired', walk.id, recoveredLease ? 'renewed_after_loss' : confirmTransfer ? 'transfer_confirmed' : 'acquired', { epoch: lease.fencingEpoch });
+        markGpsTrackingOnThisDevice(walk.id);
         lastPersistedGpsTimestamp = 0;
         if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
         activeGpsHeartbeat = repository.heartbeatGpsOwnershipV11
@@ -413,6 +420,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
 
   cancelTracking: (walkId, reason) => {
     if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return;
+    clearGpsTrackingMarker(walkId);
     const cancelReason = reason ?? 'unspecified';
     recordGpsLifecycle('cancel', walkId, cancelReason, { points: get().pointCount });
     startGeneration += 1;
@@ -420,6 +428,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     ownershipRequest = null;
     activeWatch?.remove();
     activeWatch = null;
+    void releaseScreenWakeLock();
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
@@ -429,10 +438,16 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   },
 
   stopTracking: async (walk, userId, reason, detail) => {
+    // Every stop reason ends this device's claim on the walk's GPS, so a
+    // relaunch must not resume it.
+    clearGpsTrackingMarker(walk.id);
     const wasTracking = get().trackingWalkId === walk.id;
     const stopReason = `${reason ?? 'unspecified'}${detail ? `:${detail}` : ''}`;
     if (wasTracking) recordGpsLifecycle('stop', walk.id, stopReason, { points: get().pointCount, leased: get().gpsFencingEpoch !== null, source: get().trackingSource });
     const stopMark = { walkId: walk.id, kind: 'stop' as const, reason: stopReason, at: new Date().toISOString() };
+    // This device's walk is ending — let the screen sleep again. Idempotent and
+    // covers every return path below.
+    if (wasTracking) void releaseScreenWakeLock();
     if (wasTracking) startGeneration += 1;
     if (wasTracking) pendingOwnership = null;
     if (wasTracking) ownershipRequest = null;

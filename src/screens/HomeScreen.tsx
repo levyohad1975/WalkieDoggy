@@ -78,6 +78,8 @@ import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard
 import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
+import { isGeolocationAlreadyGranted, wasTrackingGpsOnThisDevice } from '../lib/gpsResumeMarker';
+import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -137,6 +139,7 @@ export function HomeScreen() {
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
   const setReminderEnabled = useFamilyStore((s) => s.setReminderEnabled);
+  const setChatNotificationsEnabled = useFamilyStore((s) => s.setChatNotificationsEnabled);
   // Use the established coastal photo as the default instead of the flat placeholder scene.
   // Explicit family background choices always take precedence.
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
@@ -248,8 +251,9 @@ export function HomeScreen() {
       try { localStorage.setItem('walkie:walk-events:' + walkId, JSON.stringify(counts)); } catch { /* private browsing may deny storage */ }
     }
   }, []);
-  const readWalkEvents = useCallback((walkId: string) => {
-    const inMemory = walkEventCountsRef.current[walkId] ?? walkEventCounts[walkId];
+  /** This device's own running totals for a walk, or null when it has none. */
+  const storedWalkEvents = useCallback((walkId: string): { pee: number; poop: number } | null => {
+    const inMemory = walkEventCountsRef.current[walkId];
     if (inMemory && validWalkEventCount(inMemory.pee) && validWalkEventCount(inMemory.poop)) return inMemory;
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
       try {
@@ -260,8 +264,37 @@ export function HomeScreen() {
         }
       } catch { /* ignore unavailable storage */ }
     }
-    return { pee: 0, poop: 0 };
-  }, [walkEventCounts]);
+    return null;
+  }, []);
+  /**
+   * Counts shown for a walk. The walker's device publishes its totals live
+   * (record_walk_event_counts_v1), so the rest of the family sees them during
+   * the walk instead of only after "סיים טיול" (field report 2026-11-04).
+   * The walker's own device trusts its local totals once it has any (so an
+   * undo shows at once); every other device shows the larger of its own taps
+   * and the server's. A device with no taps yet starts from the server's.
+   */
+  const readWalkEvents = useCallback((walkId: string) => {
+    const local = storedWalkEvents(walkId);
+    const walk = walks.find((entry) => entry.id === walkId);
+    const server = walk && isActiveWalk(walk) && validWalkEventCount(walk.peeCount) && validWalkEventCount(walk.poopCount)
+      ? { pee: walk.peeCount, poop: walk.poopCount }
+      : null;
+    if (!local) return server ?? { pee: 0, poop: 0 };
+    const walkerHere = Boolean(walk) && (walk!.actualWalkerUserId ?? walk!.responsibleUserId) === currentUserId;
+    if (!server || walkerHere) return local;
+    return { pee: Math.max(local.pee, server.pee), poop: Math.max(local.poop, server.poop) };
+  }, [storedWalkEvents, walks, currentUserId, walkEventCounts]);
+  const publishWalkEvents = useCallback((walkId: string, counts: { pee: number; poop: number }) => {
+    const walk = walks.find((entry) => entry.id === walkId);
+    if (!walk || !isActiveWalk(walk) || (walk.actualWalkerUserId ?? walk.responsibleUserId) !== currentUserId) return;
+    if (!repository.recordWalkEventCountsV1) return;
+    // Best effort: the totals stay on this device and are sent in full again
+    // on the next tap and at finish, so a dropped request loses nothing.
+    void repository.recordWalkEventCountsV1(walkId, counts).catch((error) => {
+      console.warn('[home] live walk event counts were not published', error);
+    });
+  }, [walks, currentUserId]);
   const recordWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
     const current = readWalkEvents(walkId);
     const next = { ...current, [kind]: current[kind] + 1 };
@@ -269,7 +302,8 @@ export function HomeScreen() {
     walkEventCountsRef.current = updated;
     setWalkEventCounts(updated);
     persistWalkEvents(walkId, next);
-  }, [persistWalkEvents, readWalkEvents]);
+    publishWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents, publishWalkEvents]);
   const undoWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
     const current = readWalkEvents(walkId);
     const next = { ...current, [kind]: Math.max(0, current[kind] - 1) };
@@ -277,7 +311,8 @@ export function HomeScreen() {
     walkEventCountsRef.current = updated;
     setWalkEventCounts(updated);
     persistWalkEvents(walkId, next);
-  }, [persistWalkEvents, readWalkEvents]);
+    publishWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents, publishWalkEvents]);
 
   const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; peeCount: number; poopCount: number; note?: string; completedAt?: string } | null>(null);
   const [gpsTransferWalk, setGpsTransferWalk] = useState<Walk | null>(null);
@@ -473,7 +508,7 @@ export function HomeScreen() {
   const canManagePersonalNotifications = !personalNotificationsReadOnly && effectiveUserId === currentUserId;
   const contentAboveWalkCard = canManagePersonalNotifications || dogs.length > 1 || healthSummary.overdueCount + healthSummary.dueSoonCount > 0;
 
-  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
+  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean, opts?: { allowEarlyStart?: boolean }) => {
     // iPhone Safari requires location permission to be requested in the
     // original user gesture. Remote starts never ask the manager's device.
     if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
@@ -483,6 +518,7 @@ export function HomeScreen() {
       actualWalkerUserId,
       substitutionConfirmed: !remoteStart && actualWalkerUserId !== walk.responsibleUserId,
       remoteStart,
+      allowEarlyStart: opts?.allowEarlyStart,
     }).then((started) => {
       // A start the server did not accept must DISCARD the provisional watch.
       // stopTracking() would persist it: an orphan GPS session for an
@@ -726,6 +762,38 @@ export function HomeScreen() {
     () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
     [visibleWalks, minuteTick, scheduleTimezone]
   );
+  // Field report 2026-11-04: iOS closed the home-screen app two minutes into
+  // a walk; after reopening, nothing restarted GPS and the rest of the walk
+  // had no route. Resume once per app launch, only for a walk THIS device was
+  // already tracking, only for its actual walker, and only when location is
+  // already granted (no prompt without a tap). The server still decides the
+  // lease; any refusal leaves the "הפעל GPS" button as before.
+  const autoResumedGpsWalkIds = useRef(new Set<string>());
+  const resumableGpsWalk = useMemo(
+    () => gpsTrackingWalkId
+      ? null
+      : visibleWalks.find((entry) =>
+          entry.familyId === familyId &&
+          isActiveWalk(entry) &&
+          (entry.actualWalkerUserId ?? entry.responsibleUserId) === currentUserId &&
+          !autoResumedGpsWalkIds.current.has(entry.id) &&
+          wasTrackingGpsOnThisDevice(entry.id)
+        ) ?? null,
+    [gpsTrackingWalkId, visibleWalks, familyId, currentUserId]
+  );
+  useEffect(() => {
+    if (!resumableGpsWalk) return;
+    const walk = resumableGpsWalk;
+    autoResumedGpsWalkIds.current.add(walk.id);
+    // Not cancelled on re-render: the next 6-second poll recomputes this memo
+    // to null (the walk is now in the attempted set) while the permission
+    // check is still resolving.
+    void isGeolocationAlreadyGranted().then((granted) => {
+      if (!granted || useGpsStore.getState().trackingWalkId) return;
+      recordGpsLifecycle('auto_resume', walk.id, 'relaunch_with_marker');
+      void activateGpsForWalk(walk);
+    });
+  }, [resumableGpsWalk, activateGpsForWalk]);
   // P0 real-iPhone QA: exactly one Home block per dog for active spontaneous
   // walks. Grouping runs over the FULL visible pool (including the walk in
   // the main next-walk card) so a duplicate of that walk is still caught,
@@ -1527,9 +1595,16 @@ export function HomeScreen() {
             }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
             // currently-responsible-user only (migration 0012) — not "any
-            // member" as an earlier pass had it.
+            // member" as an earlier pass had it. The actual walker is folded
+            // in via coalesce ONLY so the live "סיים טיול" button reaches the
+            // person actually walking (field report 2026-11-05: Omer walked
+            // Eidan's 22:00 walk and had no finish button, forcing the admin
+            // to end it). For an unstarted/overdue walk actual_walker is null,
+            // so this stays admin-or-responsible exactly as before — and it
+            // mirrors finish_walk_v12's own `coalesce(actual_walker,
+            // responsible)` authorization and the spontaneous card below.
             onMarkNotDone={() => skip(nextWalk.id)}
-            canResolve={effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId}
+            canResolve={effectiveRole === 'admin' || (nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === effectiveUserId}
             // Direct reassignment/edit is Admin-only (requirement 6) — a
             // Member (real or simulated via test mode) gets the contextual
             // approval-based actions instead (requirement 4).
@@ -1766,6 +1841,11 @@ export function HomeScreen() {
               (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId));
           const completedByName =
             usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה';
+          // A 'skipped' walk can be the last RESOLVED walk (computeLastWalk
+          // includes it), but it was NOT performed — never show it as "✓ בוצע"
+          // or attribute it to a walker (Production report 2026-11-05: a skipped
+          // 18:00 showed as "בוצע ע״י אמא" on Home while History showed ✕).
+          const isSkipped = lastWalk.status === 'skipped';
           const actualCompletedTime = lastWalk.completedAt
             ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
             : lastWalk.scheduledTime;
@@ -1779,7 +1859,7 @@ export function HomeScreen() {
                 <View style={styles.dashboardLastWalkRow}>
                 <View style={styles.dashboardLastWalkTimeBlock}>
                   <RtlText style={styles.dashboardLastWalkTime}>{actualCompletedTime}</RtlText>
-                  <RtlText style={styles.dashboardLastWalkDone}>✓ בוצע {actualCompletedTime}</RtlText>
+                  <RtlText style={[styles.dashboardLastWalkDone, isSkipped && styles.dashboardLastWalkSkipped]}>{isSkipped ? '✕ לא בוצע' : `✓ בוצע ${actualCompletedTime}`}</RtlText>
                 </View>
                 <View style={styles.dashboardLastWalkActions}>
                   {canEditLastWalk ? (
@@ -1829,7 +1909,7 @@ export function HomeScreen() {
                   ) : null}
                 </View>
                 <View style={styles.dashboardLastWalkPerson}>
-                  <RtlText style={styles.dashboardLastWalkPersonLabel}>בוצע ע״י</RtlText>
+                  <RtlText style={styles.dashboardLastWalkPersonLabel}>{isSkipped ? 'אחראי/ת' : 'בוצע ע״י'}</RtlText>
                   <RtlText style={styles.dashboardLastWalkPersonName}>{completedByName}</RtlText>
                 </View>
               </View>
@@ -2167,7 +2247,9 @@ export function HomeScreen() {
         onAssociate={(walk) => {
           setSpontaneousAssociationVisible(false);
           setSpontaneousAssociationWalks([]);
-          startWalkAs(walk, currentUserId, false);
+          // Associating a walk happening now with a later scheduled slot is a
+          // deliberate spontaneous fulfillment — exempt from the early-start window.
+          startWalkAs(walk, currentUserId, false, { allowEarlyStart: true });
         }}
         onSeparate={async () => {
           const started = dog ? await startUnplannedWalk(familyId, dog.id, currentUserId) : false;
@@ -2341,6 +2423,11 @@ export function HomeScreen() {
             void setReminderEnabled(userId, enabled);
           }
         }}
+        onSetChatNotificationsEnabled={(userId, enabled) => {
+          if (canManagePersonalNotifications && userId === currentUserId) {
+            void setChatNotificationsEnabled(userId, enabled);
+          }
+        }}
         onClose={() => setPersonalNotificationsVisible(false)}
       />
 
@@ -2351,6 +2438,7 @@ export function HomeScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearActionError}
         onCancel={clearActionError}
+        hideCancel
       />
 
       <ConfirmModal
@@ -2360,6 +2448,7 @@ export function HomeScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
+        hideCancel
       />
       <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
     </SafeAreaView>
@@ -2510,6 +2599,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
+  dashboardLastWalkSkipped: { color: colors.statusSkipped },
   // Fixed physical lanes. Do not let RTL/flex negotiation move the relief
   // controls outside the compact iPhone card: edit is pinned left, pee/poop
   // pinned right, and the mascot anchor occupies only the centre.
