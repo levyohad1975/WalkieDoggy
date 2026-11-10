@@ -218,6 +218,11 @@ export function HistoryScreen() {
   const history = useMemo(
     () =>
       allHistory.filter((w) => {
+        // Owner report 2026-11-10: with "היום" selected, the banner counted
+        // yesterday's unreported walk but tapping it showed nothing. The
+        // awaiting-update view shows every such walk, whatever the other
+        // filters are.
+        if (onlyAwaiting) return canResolveWalk(w);
         if (userFilter && w.actualWalkerUserId !== userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
         if (planFilter === 'planned' && w.isUnplanned) return false;
         if (planFilter === 'unplanned' && !w.isUnplanned) return false;
@@ -225,7 +230,6 @@ export function HistoryScreen() {
         if ((rangeFilter === '7d' || rangeFilter === '30d') && rangeStartDate && w.date < rangeStartDate) return false;
         if (rangeFilter === 'custom' && customDate && w.date !== customDate) return false;
         if (!walkMatchesHistorySearch(w, historySearchQuery)) return false;
-        if (onlyAwaiting && !canResolveWalk(w)) return false;
         return true;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -507,7 +511,7 @@ export function HistoryScreen() {
             >
               <RtlText style={styles.awaitingBannerText}>
                 {onlyAwaiting
-                  ? '× הצגת כל הטיולים'
+                  ? '× מוצגים רק טיולים שממתינים לעדכון · חזרה'
                   : `⏳ ${awaitingForMeCount === 1 ? 'טיול אחד ממתין' : `${awaitingForMeCount} טיולים ממתינים`} לעדכון ›`}
               </RtlText>
             </Pressable>
