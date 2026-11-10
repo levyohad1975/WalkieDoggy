@@ -16,7 +16,8 @@ describe('ScheduleScreen — routine grid accessibility', () => {
   });
 
   it('each cell says the day, the time and who walks', () => {
-    expect(grid).toContain('accessibilityLabel={`יום ${DAY_LONG_LABELS[day]} ${row.time}: ${cellName(c)}`}');
+    // 2026-11-10: a cell with an open routine change request says so too.
+    expect(grid).toContain("accessibilityLabel={`יום ${DAY_LONG_LABELS[day]} ${row.time}: ${cellName(c)}${requestCells.has(`${day}|${row.time}`) ? ' (יש בקשה פתוחה)' : ''}`}");
     expect(grid).toContain("accessibilityRole={canEdit ? 'button' : undefined}");
   });
 
