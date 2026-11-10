@@ -32,6 +32,19 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+/**
+ * The family's admin profiles. Admin is the profile's role (users.role), as
+ * is_real_family_admin() decides it. family_admin_profile_ids() looks for a
+ * users.auth_user_id link that profiles claimed on a device do not have, so
+ * it found nobody and admin pushes never arrived (found 2026-11-10).
+ */
+async function familyAdminProfileIds(serviceClient: any, familyId: string): Promise<string[]> {
+  const { data, error } = await serviceClient.from('users').select('id')
+    .eq('family_id', familyId).eq('role', 'admin').is('removed_at', null);
+  if (error) throw error;
+  return (data ?? []).map((u: any) => u.id).filter(Boolean);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'content-type': 'application/json' } });
 }
@@ -59,9 +72,7 @@ Deno.serve(async (req: Request) => {
     if (!claim) return json({ ok: true, notified: false, reason: 'not claimable' });
     const c = claim as { id: string; family_id: string; target_name: string | null };
 
-    const { data: adminIds, error: adminError } = await serviceClient.rpc('family_admin_profile_ids', { p_family_id: c.family_id });
-    if (adminError) throw adminError;
-    const ids = (adminIds ?? []).filter(Boolean);
+    const ids = await familyAdminProfileIds(serviceClient, c.family_id);
     if (!ids.length || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return json({ ok: true, pushSent: 0 });
 
     const { data: subs, error: subError } = await serviceClient.from('web_push_subscriptions')

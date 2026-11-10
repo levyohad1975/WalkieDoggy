@@ -59,7 +59,10 @@ describe('device-access-notify Edge Function', () => {
   const fn = read('supabase/functions/device-access-notify/index.ts');
   it('trusts only an id, claims through the caller and pushes to the family admins', () => {
     expect(fn).toContain("userClient.rpc('claim_device_access_admin_notice'");
-    expect(fn).toContain("serviceClient.rpc('family_admin_profile_ids'");
+    // Admins are the profiles whose role is admin (2026-11-10: the
+    // family_admin_profile_ids() roster relied on a link claimed profiles lack).
+    expect(fn).toContain(".eq('family_id', familyId).eq('role', 'admin').is('removed_at', null)");
+    expect(fn).not.toContain("serviceClient.rpc('family_admin_profile_ids'");
     expect(fn).toContain(".in('user_id', ids).eq('family_id', c.family_id).eq('is_active', true)");
   });
 });
