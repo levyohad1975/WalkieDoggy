@@ -303,6 +303,18 @@ export function ScheduleScreen() {
     await decideRoutineChangeRequest(r.id, true);
   };
 
+  /** Admin: one day's walk moves to another time; the rest of the row stays. */
+  const handleRoutineMoveCell = async (day: number, fromTime: string, toTime: string, userId: string) => {
+    if (!dog) return;
+    const rulesOf = () => useScheduleStore.getState().rules.filter((x) => x.dogId === dog.id);
+    for (const step of [{ time: fromTime, userId: null }, { time: toTime, userId }]) {
+      await applyRoutineOps(planCellAssignment(rulesOf(), step.time, [day], step.userId));
+      if (useScheduleStore.getState().actionError) {
+        throw new Error('שינוי השעה לא הושלם. בדקו את הטבלה ונסו שוב.');
+      }
+    }
+  };
+
   const handleRoutineRequest = async (draft: RoutineRequestDraft) => {
     if (!dog) return;
     try {
@@ -571,6 +583,7 @@ export function ScheduleScreen() {
             requests={routineRequests.filter((r) => r.dogId === dog?.id)}
             onRequest={isSupabaseConfigured ? handleRoutineRequest : undefined}
             onOneOff={isSupabaseConfigured ? handleRoutineOneOff : undefined}
+            onMoveCell={handleRoutineMoveCell}
           />
           <RoutineRequestsList
             requests={routineRequests.filter((r) => r.dogId === dog?.id)}

@@ -63,6 +63,13 @@ describe('routine grid', () => {
     expect(planCellAssignment(rules, '08:00', [3], 'aba')).toEqual([]);
   });
 
+  it('moves one day to another time: remove it from the row, then give it to the same person at the new time', () => {
+    const first = planCellAssignment(rules, '08:00', [0], null);
+    expect(first).toEqual([{ type: 'update', ruleId: 'r1', daysOfWeek: [1, 2, 3, 4, 5, 6] }]);
+    const after = rules.map((r) => (r.id === 'r1' ? { ...r, daysOfWeek: [1, 2, 3, 4, 5, 6] } : r));
+    expect(planCellAssignment(after, '09:15', [0], 'aba')).toEqual([{ type: 'add', time: '09:15', daysOfWeek: [0], userId: 'aba' }]);
+  });
+
   it('ignores inactive rules and keeps rotation rules as their own cells', () => {
     const rows = buildRoutineRows([rule('x', '07:00', [1], ['a']), rule('y', '09:00', [2], ['a', 'b']), rule('z', '10:00', [3], ['a'], false)]);
     expect(rows.map((r) => r.time)).toEqual(['07:00', '09:00']);

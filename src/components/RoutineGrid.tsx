@@ -45,6 +45,8 @@ interface RoutineGridProps {
   onRequest?: (draft: RoutineRequestDraft) => Promise<void>;
   /** One-off shortcut: the existing request for the next walk in this cell. */
   onOneOff?: (day: number, time: string, mode: 'swap' | 'time') => void;
+  /** Admin: move one day's walk to another time (that day only). */
+  onMoveCell?: (day: number, fromTime: string, toTime: string, userId: string) => Promise<void>;
 }
 
 type RequestSel = { time: string; day: number; ownerId: string };
@@ -57,7 +59,7 @@ type CellSel = { time: string; day: number; userId: string | null };
  * instead of a row per rule. Tap a cell to choose who walks (this day, or
  * every day at this time); tap a time to move or remove the whole row.
  */
-export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime, currentUserId, requests = [], onRequest, onOneOff }: RoutineGridProps) {
+export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime, currentUserId, requests = [], onRequest, onOneOff, onMoveCell }: RoutineGridProps) {
   const rows = useMemo(() => buildRoutineRows(rules), [rules]);
   const load = useMemo(() => weeklyLoad(rows), [rows]);
   const tints = useMemo(() => tintsByUser(users), [users]);
@@ -74,6 +76,7 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
   const [reqStep, setReqStep] = useState<RequestStep>('menu');
   const [reqTime, setReqTime] = useState('');
   const [sentNotice, setSentNotice] = useState<string | null>(null);
+  const [moveTime, setMoveTime] = useState<string | null>(null); // admin: "this day only" time change
 
   // Family members (not the admin) tap a person's cell to ask for a change.
   const canRequest = !canEdit && Boolean(onRequest && currentUserId);
@@ -112,6 +115,7 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
     const userId = c?.kind === 'person' ? c.userId : null;
     setCell({ time, day, userId });
     setPicked(userId);
+    setMoveTime(null);
     setError(null);
   };
 
@@ -133,6 +137,20 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
     if (!cell) return;
     const ops = planCellAssignment(rules, cell.time, allDays ? [...WEEK_DAYS] : [cell.day], picked);
     void run(() => onApply(ops), () => setCell(null));
+  };
+
+  // Owner request 2026-11-10: change the time of ONE day without touching
+  // the rest of the row ("איך משנים שעה ליום ספציפי?").
+  const saveMove = () => {
+    if (!cell || !picked || !moveTime || !onMoveCell) return;
+    if (moveTime === cell.time) { setError('בחרו שעה אחרת מהשעה הנוכחית.'); return; }
+    const target = rows.find((r) => r.time === moveTime)?.cells[cell.day];
+    if (target) {
+      setError(`ביום ${DAY_LONG_LABELS[cell.day]} כבר יש טיול ב-${moveTime}. אפשר לשנות אותו ישירות בטבלה.`);
+      return;
+    }
+    const { day, time } = cell;
+    void run(() => onMoveCell(day, time, moveTime, picked), () => setCell(null));
   };
 
   const openTime = (time: string) => {
@@ -293,11 +311,43 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                 <RtlText style={styles.personName}>אין טיול</RtlText>
               </Pressable>
             </View>
+            {cell && moveTime !== null ? (
+              <View style={styles.moveBox}>
+                <RtlText style={styles.sheetSub}>{`השעה החדשה ליום ${DAY_LONG_LABELS[cell.day]} בלבד:`}</RtlText>
+                <TimePickerField value={moveTime} onChange={setMoveTime} webLabel="שעה חדשה ליום הזה" />
+              </View>
+            ) : null}
             {error ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</RtlText> : null}
-            <View style={styles.actions}>
-              <Button label={cell ? `שמירה ליום ${DAY_SHORT_LABELS[cell.day]}` : 'שמירה'} onPress={() => saveCell(false)} loading={busy} disabled={busy} style={styles.flex} />
-              <Button label={cell ? `לכל ימי ה-${cell.time}` : 'לכל השבוע'} variant="secondary" onPress={() => saveCell(true)} disabled={busy} style={styles.flex} />
-            </View>
+            {cell && moveTime !== null ? (
+              <View style={styles.actions}>
+                <Button
+                  label={`העברה ל-${moveTime}`}
+                  onPress={saveMove}
+                  loading={busy}
+                  disabled={busy || !picked}
+                  style={styles.flex}
+                  accessibilityHint={`הטיול של יום ${DAY_LONG_LABELS[cell.day]} יעבור לשעה החדשה. שאר הימים לא משתנים`}
+                />
+                <Button label="ביטול" variant="secondary" onPress={() => { setMoveTime(null); setError(null); }} disabled={busy} style={styles.flex} />
+              </View>
+            ) : (
+              <>
+                <View style={styles.actions}>
+                  <Button label={cell ? `שמירה ליום ${DAY_SHORT_LABELS[cell.day]}` : 'שמירה'} onPress={() => saveCell(false)} loading={busy} disabled={busy} style={styles.flex} />
+                  <Button label={cell ? `לכל ימי ה-${cell.time}` : 'לכל השבוע'} variant="secondary" onPress={() => saveCell(true)} disabled={busy} style={styles.flex} />
+                </View>
+                {cell && onMoveCell && picked ? (
+                  <Button
+                    label="🕒 שינוי השעה ליום הזה בלבד"
+                    variant="secondary"
+                    compact
+                    onPress={() => { setMoveTime(cell.time); setError(null); }}
+                    disabled={busy}
+                    style={styles.full}
+                  />
+                ) : null}
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -482,6 +532,7 @@ const styles = StyleSheet.create({
   noticeText: { color: '#1E6B3E', fontSize: 13, fontWeight: '700', textAlign: 'right' },
   requestDot: { position: 'absolute', top: 4, left: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: '#F08A24', borderWidth: 1, borderColor: '#FFFFFF' },
   oneOffTitle: { marginTop: spacing.xs },
+  moveBox: { gap: spacing.xs },
   slotList: { maxHeight: 300 },
   slotListInner: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   slotChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, paddingVertical: 6, paddingRight: 6, paddingLeft: 12 },
