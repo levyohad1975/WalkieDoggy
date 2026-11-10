@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { Dog, FamilyUser, Walk, WalkGpsSession } from '../types';
-import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
+import { formatDuration, isOverdue, minutesUntil, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
@@ -379,7 +379,7 @@ export function NextWalkCard({
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
             <RtlText style={styles.dashboardPersonName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>{responsible?.name ?? '—'}</RtlText>
-            <RtlText style={styles.dashboardColumnLabel}>מתוכנן ל</RtlText>
+            <RtlText style={styles.dashboardColumnLabel}>באחריות</RtlText>
             {swappedFrom ? <RtlText style={styles.swappedFromLabel} numberOfLines={1}>{`↔ הוחלף · במקום ${swappedFrom.name}`}</RtlText> : null}
             {isActive && actualWalker ? <RtlText style={styles.actualWalkerLabel} numberOfLines={2}>מבצע בפועל: {actualWalker.name}</RtlText> : null}
           </View>
@@ -388,7 +388,17 @@ export function NextWalkCard({
             <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
           </View>
           <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
-            {isActive ? <RtlText style={styles.activeGpsLabel}>GPS פעיל</RtlText> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
+            {isActive ? <RtlText style={styles.activeGpsLabel}>GPS פעיל</RtlText> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : (
+              // Owner report 2026-11-10: this column stayed empty on an overdue
+              // walk; it now shows how late it is (the line below then only
+              // carries "דורש תשומת לב").
+              <>
+                <RtlText style={styles.overdueValue} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+                  {formatDuration(Math.abs(minutesUntil(walk, new Date(), scheduleTimezone)))}
+                </RtlText>
+                <RtlText style={styles.dashboardColumnLabel}>באיחור</RtlText>
+              </>
+            )}
           </View>
         </View> : null}
         </>
@@ -414,7 +424,13 @@ export function NextWalkCard({
         </View>
       )}
 
-      {overdue ? (
+      {overdue && tone === 'dashboard' && !isActive ? (
+        requiresAttention ? (
+          <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            🚨 דורש תשומת לב
+          </RtlText>
+        ) : null
+      ) : overdue ? (
         <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
           {relativeTimeLabel(walk, new Date(), scheduleTimezone)}
@@ -628,6 +644,7 @@ const styles = StyleSheet.create({
   dateContext: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 1 },
   relative: { width: '100%', fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 4, textAlign: 'right' },
   relativeOverdue: { color: colors.statusOverdue },
+  overdueValue: { fontSize: 17, fontWeight: '800', color: colors.statusOverdue, textAlign: 'center' },
   // Keep the family-member circle visually separated from the large time on
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
