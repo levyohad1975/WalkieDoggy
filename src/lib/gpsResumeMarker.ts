@@ -43,3 +43,24 @@ export async function isGeolocationAlreadyGranted(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * True unless the browser says location is DENIED. Used to resume a walk
+ * this device was already tracking (field report 2026-11-11): on an iPhone
+ * home-screen app the Permissions API reports "prompt" even after the walker
+ * allowed location for this walk, so requiring "granted" meant the resume
+ * never ran and the rest of the walk had no route. Resuming then may show the
+ * system location prompt once, which is expected mid-walk; "denied" still
+ * leaves the "הפעל GPS" button.
+ */
+export async function isGeolocationNotDenied(): Promise<boolean> {
+  if (Platform.OS !== 'web') return false;
+  try {
+    const permissions = (typeof navigator !== 'undefined' ? navigator.permissions : undefined) as Permissions | undefined;
+    if (!permissions?.query) return true;
+    const status = await permissions.query({ name: 'geolocation' as PermissionName });
+    return status.state !== 'denied';
+  } catch {
+    return true;
+  }
+}

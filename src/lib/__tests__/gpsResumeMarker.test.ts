@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import {
   clearGpsTrackingMarker,
   isGeolocationAlreadyGranted,
+  isGeolocationNotDenied,
   markGpsTrackingOnThisDevice,
   wasTrackingGpsOnThisDevice,
 } from '../gpsResumeMarker';
@@ -58,5 +59,16 @@ describe('gpsResumeMarker', () => {
     await expect(isGeolocationAlreadyGranted()).resolves.toBe(false);
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
     await expect(isGeolocationAlreadyGranted()).resolves.toBe(false);
+  });
+
+  it('resumes unless location is explicitly denied (iPhone reports "prompt" mid-walk, 2026-11-11)', async () => {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { permissions: { query: async () => ({ state: 'prompt' }) } } });
+    await expect(isGeolocationNotDenied()).resolves.toBe(true);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { permissions: { query: async () => ({ state: 'granted' }) } } });
+    await expect(isGeolocationNotDenied()).resolves.toBe(true);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { permissions: { query: async () => ({ state: 'denied' }) } } });
+    await expect(isGeolocationNotDenied()).resolves.toBe(false);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+    await expect(isGeolocationNotDenied()).resolves.toBe(true);
   });
 });

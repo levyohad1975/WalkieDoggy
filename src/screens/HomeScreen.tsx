@@ -80,8 +80,11 @@ import { RoutineRequestsHomeCard, routineRequestsWaitingFor, useRoutineChangeReq
 import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
-import { isGeolocationAlreadyGranted, wasTrackingGpsOnThisDevice } from '../lib/gpsResumeMarker';
+import { isGeolocationNotDenied, wasTrackingGpsOnThisDevice } from '../lib/gpsResumeMarker';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
+
+/** A walk this device tracks with no GPS fix for this long is restarted when the app returns to the front. */
+const GPS_FOREGROUND_STALE_MS = 20_000;
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -684,6 +687,9 @@ export function HomeScreen() {
     return dedupeCanonicalWalks(dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks);
   }, [walks, familyId, dogs.length, dog?.id]);
   const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;
+  // Read by the app-foreground GPS resume listener without re-subscribing.
+  const visibleWalksRef = useRef(visibleWalks);
+  visibleWalksRef.current = visibleWalks;
 
   // GPS is collected on the walker's device. A different family device has
   // no local gpsStore watch, so hydrate the server-fenced route for active
@@ -790,12 +796,36 @@ export function HomeScreen() {
     // Not cancelled on re-render: the next 6-second poll recomputes this memo
     // to null (the walk is now in the attempted set) while the permission
     // check is still resolving.
-    void isGeolocationAlreadyGranted().then((granted) => {
-      if (!granted || useGpsStore.getState().trackingWalkId) return;
+    // 2026-11-11: iPhone reports "prompt" here even after location was allowed
+    // for this walk, so only an explicit "denied" stops the resume.
+    void isGeolocationNotDenied().then((allowed) => {
+      if (!allowed || useGpsStore.getState().trackingWalkId) return;
       recordGpsLifecycle('auto_resume', walk.id, 'relaunch_with_marker');
       void activateGpsForWalk(walk);
     });
   }, [resumableGpsWalk, activateGpsForWalk]);
+  // Field report 2026-11-11: the walker switched to another app for a few
+  // minutes; back in Walkie the walk card was there but no point reached the
+  // server again (iOS stops the location watch and the lease lapses while the
+  // page is hidden, and nothing restarted them). When the app comes back to
+  // the front during a walk this device is tracking and no fix arrived for a
+  // while, restart the watch (keeping the captured route) and renew the lease.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const gps = useGpsStore.getState();
+      const walkId = gps.trackingWalkId;
+      if (!walkId || gps.trackingStatus === 'requesting') return;
+      const walk = visibleWalksRef.current.find((entry) => entry.id === walkId && isActiveWalk(entry));
+      if (!walk) return;
+      const lastFixAt = gps.routePoints.length ? gps.routePoints[gps.routePoints.length - 1].timestamp : 0;
+      if (Date.now() - lastFixAt < GPS_FOREGROUND_STALE_MS) return;
+      recordGpsLifecycle('auto_resume', walkId, 'foreground_after_gap', { gapSeconds: lastFixAt ? Math.round((Date.now() - lastFixAt) / 1000) : -1 });
+      useGpsStore.setState({ trackingStatus: 'interrupted' });
+      void activateGpsForWalk(walk);
+    });
+    return () => sub.remove();
+  }, [activateGpsForWalk]);
   // P0 real-iPhone QA: exactly one Home block per dog for active spontaneous
   // walks. Grouping runs over the FULL visible pool (including the walk in
   // the main next-walk card) so a duplicate of that walk is still caught,
