@@ -53,11 +53,19 @@ describe('Home publishes live walk events and resumes GPS after relaunch', () =>
     expect(home).toMatch(/if \(!local\) return server \?\? \{ pee: 0, poop: 0 \};/);
   });
 
-  it('resumes only a walk this device was tracking, for its walker, once, with permission already granted', () => {
+  it('resumes only a walk this device was tracking, for its walker, once, unless location is denied', () => {
     expect(home).toMatch(/\(entry\.actualWalkerUserId \?\? entry\.responsibleUserId\) === currentUserId/);
     expect(home).toMatch(/wasTrackingGpsOnThisDevice\(entry\.id\)/);
     expect(home).toMatch(/autoResumedGpsWalkIds\.current\.add\(walk\.id\)/);
-    expect(home).toMatch(/if \(!granted \|\| useGpsStore\.getState\(\)\.trackingWalkId\) return;/);
+    // 2026-11-11: iPhone reports "prompt" after location was allowed, so
+    // only an explicit "denied" blocks the resume.
+    expect(home).toMatch(/isGeolocationNotDenied\(\)\.then\(\(allowed\) => \{\n\s*if \(!allowed \|\| useGpsStore\.getState\(\)\.trackingWalkId\) return;/);
+  });
+
+  it('restarts the watch and renews the lease when the app returns to the front after a gap (2026-11-11)', () => {
+    expect(home).toMatch(/AppState\.addEventListener\('change', \(state\) => \{\n\s*if \(state !== 'active'\) return;/);
+    expect(home).toMatch(/if \(Date\.now\(\) - lastFixAt < GPS_FOREGROUND_STALE_MS\) return;/);
+    expect(home).toMatch(/useGpsStore\.setState\(\{ trackingStatus: 'interrupted' \}\);\n\s*void activateGpsForWalk\(walk\);/);
   });
 
   it('marks the device on lease acquisition and clears it on every stop or cancel', () => {
