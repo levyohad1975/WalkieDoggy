@@ -519,13 +519,11 @@ export function HomeScreen() {
   const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean, opts?: { allowEarlyStart?: boolean }) => {
     // iPhone Safari requires location permission to be requested in the
     // original user gesture. Remote starts never ask the manager's device.
-    if (!remoteStart) {
-      // Ask for the screen wake lock inside the tap itself (2026-11-11): the
-      // GPS store asks again once the watch is live, but that is after an
-      // async permission round-trip, outside the user gesture.
-      acquireScreenWakeLock();
-      void useGpsStore.getState().startTracking(walk).catch(() => undefined);
-    }
+    // Ask for the screen wake lock inside the tap itself (2026-11-11): the
+    // GPS store asks again once the watch is live, but that is after an
+    // async permission round-trip, outside the user gesture.
+    if (!remoteStart) acquireScreenWakeLock();
+    if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
     void startWalk(walk.id, {
       startGps: false,
       actorUserId: currentUserId,
