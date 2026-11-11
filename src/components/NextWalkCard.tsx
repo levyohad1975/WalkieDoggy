@@ -26,6 +26,11 @@ interface NextWalkCardProps {
   responsible?: FamilyUser;
   /** Planned for this member before a one-off swap (still swapped). */
   swappedFrom?: FamilyUser;
+  /** This device's screen wake lock while it tracks this walk (null = not tracking here). */
+  wakeLockState?: 'on' | 'off' | 'idle' | 'unsupported' | null;
+  /** Minutes GPS was stopped before it resumed (app not in front); null = nothing to report. */
+  gpsGapMinutes?: number | null;
+  onDismissGpsGap?: () => void;
   actualWalker?: FamilyUser;
   currentUserId: string;
   dogName: string;
@@ -122,6 +127,9 @@ export function NextWalkCard({
   scheduleTimezone,
   responsible,
   swappedFrom,
+  wakeLockState,
+  gpsGapMinutes,
+  onDismissGpsGap,
   actualWalker,
   currentUserId,
   dogName,
@@ -324,6 +332,23 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
+        {/* Owner request 2026-11-11: say whether the screen is kept awake
+            (an iPhone home-screen app gets no GPS once the screen locks or
+            another app is in front) and report a gap once tracking resumes. */}
+        {gpsNotTrackedHere == null && (wakeLockState === 'on' || wakeLockState === 'off') && (gpsTrackingStatus === 'active' || gpsTrackingStatus === 'waiting') ? (
+          <RtlText style={[styles.wakeLockLine, wakeLockState === 'off' && styles.wakeLockLineWarn]} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            {wakeLockState === 'on'
+              ? '🔆 המסך יישאר דלוק בזמן הטיול'
+              : '⚠️ המסך עלול להינעל — השאירו את האפליקציה פתוחה כדי שהמסלול יישמר'}
+          </RtlText>
+        ) : null}
+        {gpsGapMinutes != null && gpsGapMinutes >= 1 ? (
+          <Pressable onPress={onDismissGpsGap} style={styles.gpsGapNotice} accessibilityRole="button" accessibilityLabel={`ה-GPS עצר ל-${gpsGapMinutes} דקות כשהאפליקציה לא הייתה פתוחה. סגירה`}>
+            <RtlText style={styles.gpsGapText} accessibilityLiveRegion="polite" maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {`⏸️ ה-GPS עצר ל-${gpsGapMinutes === 1 ? 'דקה' : `${gpsGapMinutes} דקות`} כשהאפליקציה לא הייתה פתוחה. כדי שהמסלול יישמר, השאירו אותה פתוחה עד סוף הטיול. ✕`}
+            </RtlText>
+          </Pressable>
+        ) : null}
         {gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
           <RtlText style={styles.gpsDiagnostic} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} testID="gps-last-stop-diagnostic">
             {`אבחון GPS: ${gpsLastStopLabel}`}
@@ -554,6 +579,10 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  wakeLockLine: { fontSize: 12, color: '#1E6B3E', textAlign: 'right', marginTop: 2 },
+  wakeLockLineWarn: { color: '#8A4B00', fontWeight: '700' },
+  gpsGapNotice: { backgroundColor: '#FFF1E2', borderColor: '#F08A24', borderWidth: 1, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 10, marginTop: 4 },
+  gpsGapText: { fontSize: 12, fontWeight: '700', color: '#8A4B00', textAlign: 'right' },
   swappedFromLabel: { fontSize: 12, fontWeight: '700', color: '#B35C00', textAlign: 'center', marginTop: 2 },
   walkEventGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   walkEventUndo: { width: 44, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },

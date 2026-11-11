@@ -81,10 +81,13 @@ import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
 import { isGeolocationNotDenied, wasTrackingGpsOnThisDevice } from '../lib/gpsResumeMarker';
+import { acquireScreenWakeLock, getScreenWakeLockState, subscribeScreenWakeLock, type ScreenWakeLockState } from '../lib/screenWakeLock';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
 
 /** A walk this device tracks with no GPS fix for this long is restarted when the app returns to the front. */
 const GPS_FOREGROUND_STALE_MS = 20_000;
+/** A GPS gap at least this long is reported on the walk card when tracking resumes. */
+const GPS_GAP_NOTICE_MIN_MS = 60_000;
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -516,7 +519,13 @@ export function HomeScreen() {
   const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean, opts?: { allowEarlyStart?: boolean }) => {
     // iPhone Safari requires location permission to be requested in the
     // original user gesture. Remote starts never ask the manager's device.
-    if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+    if (!remoteStart) {
+      // Ask for the screen wake lock inside the tap itself (2026-11-11): the
+      // GPS store asks again once the watch is live, but that is after an
+      // async permission round-trip, outside the user gesture.
+      acquireScreenWakeLock();
+      void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+    }
     void startWalk(walk.id, {
       startGps: false,
       actorUserId: currentUserId,
@@ -542,6 +551,7 @@ export function HomeScreen() {
   // real fix exists, reconcile that request on the server. This closes the
   // gap where local GPS worked but the admin kept seeing a pending command.
   const activateGpsForWalk = useCallback(async (walk: Walk) => {
+    acquireScreenWakeLock();
     try {
       await useGpsStore.getState().startTracking(walk);
       const owned = await useGpsStore.getState().attachGpsOwnership(walk);
@@ -690,6 +700,16 @@ export function HomeScreen() {
   // Read by the app-foreground GPS resume listener without re-subscribing.
   const visibleWalksRef = useRef(visibleWalks);
   visibleWalksRef.current = visibleWalks;
+  // Owner request 2026-11-11: show the walker whether the screen is being kept
+  // awake, and how long GPS stopped while the app was not in front.
+  const [wakeLockState, setWakeLockState] = useState<ScreenWakeLockState>(() => getScreenWakeLockState());
+  useEffect(() => subscribeScreenWakeLock(setWakeLockState), []);
+  const [gpsGapNotice, setGpsGapNotice] = useState<{ walkId: string; minutes: number } | null>(null);
+  useEffect(() => {
+    if (!gpsGapNotice) return undefined;
+    const timer = setTimeout(() => setGpsGapNotice(null), 3 * 60_000);
+    return () => clearTimeout(timer);
+  }, [gpsGapNotice]);
 
   // GPS is collected on the walker's device. A different family device has
   // no local gpsStore watch, so hydrate the server-fenced route for active
@@ -796,10 +816,15 @@ export function HomeScreen() {
     // Not cancelled on re-render: the next 6-second poll recomputes this memo
     // to null (the walk is now in the attempted set) while the permission
     // check is still resolving.
+    // How long this walk went without GPS (the server's last route write),
+    // for the "ה-GPS עצר ל-X דקות" notice on the walk card.
+    const lastServerUpdate = remoteGpsSessionForWalk(walk.id)?.updatedAt;
+    const relaunchGapMs = lastServerUpdate ? Date.now() - Date.parse(lastServerUpdate) : 0;
     // 2026-11-11: iPhone reports "prompt" here even after location was allowed
     // for this walk, so only an explicit "denied" stops the resume.
     void isGeolocationNotDenied().then((allowed) => {
       if (!allowed || useGpsStore.getState().trackingWalkId) return;
+      if (relaunchGapMs >= GPS_GAP_NOTICE_MIN_MS) setGpsGapNotice({ walkId: walk.id, minutes: Math.round(relaunchGapMs / 60_000) });
       recordGpsLifecycle('auto_resume', walk.id, 'relaunch_with_marker');
       void activateGpsForWalk(walk);
     });
@@ -821,6 +846,9 @@ export function HomeScreen() {
       const lastFixAt = gps.routePoints.length ? gps.routePoints[gps.routePoints.length - 1].timestamp : 0;
       if (Date.now() - lastFixAt < GPS_FOREGROUND_STALE_MS) return;
       recordGpsLifecycle('auto_resume', walkId, 'foreground_after_gap', { gapSeconds: lastFixAt ? Math.round((Date.now() - lastFixAt) / 1000) : -1 });
+      if (lastFixAt && Date.now() - lastFixAt >= GPS_GAP_NOTICE_MIN_MS) {
+        setGpsGapNotice({ walkId, minutes: Math.round((Date.now() - lastFixAt) / 60_000) });
+      }
       useGpsStore.setState({ trackingStatus: 'interrupted' });
       void activateGpsForWalk(walk);
     });
@@ -1620,6 +1648,9 @@ export function HomeScreen() {
             remoteGpsSession={remoteGpsSessionForWalk(nextWalk.id)}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
+            wakeLockState={gpsTrackingWalkId === nextWalk.id ? wakeLockState : null}
+            gpsGapMinutes={gpsGapNotice?.walkId === nextWalk.id ? gpsGapNotice.minutes : null}
+            onDismissGpsGap={() => setGpsGapNotice(null)}
             gpsNotTrackedHere={
               isActiveWalk(nextWalk) && gpsTrackingWalkId !== nextWalk.id
                 ? ((nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? 'walker_here' : 'elsewhere')
@@ -1776,6 +1807,9 @@ export function HomeScreen() {
                     remoteGpsSession={remoteGpsSessionForWalk(spontaneous.id)}
                     gpsStatus={gpsTrackingWalkId === spontaneous.id ? gpsPermissionStatus : null}
                     gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}
+                    wakeLockState={gpsTrackingWalkId === spontaneous.id ? wakeLockState : null}
+                    gpsGapMinutes={gpsGapNotice?.walkId === spontaneous.id ? gpsGapNotice.minutes : null}
+                    onDismissGpsGap={() => setGpsGapNotice(null)}
                     gpsNotTrackedHere={
                       isActiveWalk(spontaneous) && gpsTrackingWalkId !== spontaneous.id
                         ? (spontaneousWalkerId === currentUserId ? 'walker_here' : 'elsewhere')

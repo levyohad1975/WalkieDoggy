@@ -38,6 +38,28 @@ let sentinel: ScreenWakeLockSentinel | null = null;
 let wanted = false;
 let visibilityListenerBound = false;
 
+/**
+ * What the walk card tells the walker (owner request 2026-11-11: GPS kept
+ * stopping and nobody could tell whether the screen was being kept awake).
+ * 'on' = the system granted the lock; 'off' = wanted but not held (refused,
+ * or released by the system); 'idle' = not wanted; 'unsupported' = no API.
+ */
+export type ScreenWakeLockState = 'on' | 'off' | 'idle' | 'unsupported';
+const listeners = new Set<(state: ScreenWakeLockState) => void>();
+export function getScreenWakeLockState(): ScreenWakeLockState {
+  if (!isSupported()) return 'unsupported';
+  if (!wanted) return 'idle';
+  return sentinel && !sentinel.released ? 'on' : 'off';
+}
+function notify(): void {
+  const state = getScreenWakeLockState();
+  listeners.forEach((listener) => listener(state));
+}
+export function subscribeScreenWakeLock(listener: (state: ScreenWakeLockState) => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 function isSupported(): boolean {
   return (
     typeof navigator !== 'undefined' &&
@@ -60,12 +82,15 @@ async function requestLock(): Promise<void> {
     sentinel = next;
     next.addEventListener?.('release', () => {
       if (sentinel === next) sentinel = null;
+      notify();
     });
+    notify();
   } catch {
     // Not fatal — the walk continues; the screen may lock and GPS pause until
     // the walker wakes it. Leave `wanted` set so a later visibility change or
     // re-acquire can try again.
     sentinel = null;
+    notify();
   }
 }
 
@@ -86,6 +111,7 @@ export function acquireScreenWakeLock(): void {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     visibilityListenerBound = true;
   }
+  notify();
   void requestLock();
 }
 
@@ -101,6 +127,7 @@ export async function releaseScreenWakeLock(): Promise<void> {
   }
   const held = sentinel;
   sentinel = null;
+  notify();
   if (held && !held.released) {
     try {
       await held.release();

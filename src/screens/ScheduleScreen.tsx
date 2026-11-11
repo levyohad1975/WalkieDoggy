@@ -154,7 +154,6 @@ export function ScheduleScreen() {
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
-  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
   const [requestSwapWalkId, setRequestSwapWalkId] = useState<string | null>(null);
   const [requestSwapTargetUserId, setRequestSwapTargetUserId] = useState<string | null>(null);
   const [requestTimeChangeWalkId, setRequestTimeChangeWalkId] = useState<string | null>(null);
@@ -687,18 +686,6 @@ export function ScheduleScreen() {
       />
 
       <ConfirmModal
-        visible={!!deleteRuleId}
-        title="למחוק את שעת הטיול הזו?"
-        message="טיולים עתידיים שטרם בוצעו יימחקו מהלוח. היסטוריה תישאר."
-        confirmLabel="מחק"
-        onConfirm={async () => {
-          if (deleteRuleId) await deleteRule(deleteRuleId);
-          setDeleteRuleId(null);
-        }}
-        onCancel={() => setDeleteRuleId(null)}
-      />
-
-      <ConfirmModal
         visible={!!actionError}
         title="אופס"
         message={actionError ?? ''}
@@ -878,49 +865,5 @@ const styles = StyleSheet.create({
   fontSize: 13,
   flexShrink: 0,
   paddingStart: 8,
-},
-  ruleRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 10,
-  backgroundColor: colors.surface,
-  borderRadius: radii.lg,
-  borderWidth: 1,
-  borderColor: colors.border,
-  paddingHorizontal: spacing.md,
-  paddingVertical: spacing.sm,
-},
-
-ruleActions: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-  flexShrink: 0,
-},
-
-ruleActionIcon: {
-  fontSize: 16,
-  padding: 3,
-},
-
-ruleInfo: {
-  flex: 1,
-  gap: 2,
-  minWidth: 0,
-  alignItems: 'flex-end',
-},
-
-ruleTime: {
-  fontSize: 17,
-  fontWeight: '800',
-  color: colors.textPrimary,
-  textAlign: 'right',
-},
-
-ruleRotation: {
-  fontSize: 12,
-  color: colors.textSecondary,
-  textAlign: 'right',
-  width: '100%',
 },
 });
