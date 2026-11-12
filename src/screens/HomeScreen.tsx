@@ -48,6 +48,7 @@ import { achievementDefinition, type AchievementProgress } from '../logic/achiev
 import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured, isWalkResolutionStaging } from '../lib/supabase';
+import { FAMILY_WALK_PULSE_MS, fetchLatestFamilyWalkChange } from '../lib/familyWalkPulse';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { canCompositeCutout, useCutoutVerdict } from '../lib/cutoutVerification';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
@@ -438,6 +439,45 @@ export function HomeScreen() {
       void loadFamily(familyId);
       void loadSchedule(familyId);
       if (isSupabaseConfigured) void loadRequests();
+    }, [familyId, loadFamily, loadSchedule, loadRequests])
+  );
+
+  // Field report 2026-11-12: a walk started on another phone reached this
+  // iPhone minutes late (dead Realtime socket after the background; the
+  // reconcile below only runs when an active walk is already shown, and
+  // focus effects do not fire when the app returns to the front). While Home
+  // is focused: reload everything when the app comes back to the front, and
+  // poll one row — the family's latest walk change — reloading the schedule
+  // when it moves.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSupabaseConfigured || !familyId) return undefined;
+      let disposed = false;
+      let checking = false;
+      let lastSeen: string | null = null;
+      const pulse = async () => {
+        if (disposed || checking || AppState.currentState !== 'active') return;
+        checking = true;
+        try {
+          const latest = await fetchLatestFamilyWalkChange(familyId);
+          if (disposed || !latest) return;
+          if (lastSeen !== null && latest !== lastSeen) await useScheduleStore.getState().load(familyId);
+          lastSeen = latest;
+        } catch {
+          /* offline: try again on the next tick */
+        } finally {
+          checking = false;
+        }
+      };
+      void pulse();
+      const interval = setInterval(() => { void pulse(); }, FAMILY_WALK_PULSE_MS);
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state !== 'active' || disposed) return;
+        void loadFamily(familyId);
+        void loadSchedule(familyId);
+        void loadRequests();
+      });
+      return () => { disposed = true; clearInterval(interval); sub.remove(); };
     }, [familyId, loadFamily, loadSchedule, loadRequests])
   );
 
