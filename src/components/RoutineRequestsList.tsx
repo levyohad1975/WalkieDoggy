@@ -31,6 +31,7 @@ interface Props {
  * last week stay visible to the people involved (and the admin).
  */
 export function RoutineRequestsList({ requests, usersById, currentUserId, isAdmin, busyId, onRespond, onDecide, onCancel }: Props) {
+  const targetName = (r: RoutineChangeRequest) => (r.targetUserId && usersById[r.targetUserId]?.name) || 'בן המשפחה';
   const involved = (r: RoutineChangeRequest) => r.requesterUserId === currentUserId || r.targetUserId === currentUserId;
   const open = requests.filter(isOpenRoutineRequest);
   const recent = requests.filter((r) => !isOpenRoutineRequest(r) && r.status !== 'cancelled' && (isAdmin || involved(r))).slice(0, 4);
@@ -43,7 +44,7 @@ export function RoutineRequestsList({ requests, usersById, currentUserId, isAdmi
     const waitingForAdmin = r.status === 'pending_admin' && isAdmin;
     const mineOpen = isOpenRoutineRequest(r) && r.requesterUserId === currentUserId;
     return (
-      <View key={r.id} style={[styles.card, (waitingForMe || waitingForAdmin) && styles.cardAction]}>
+      <View key={r.id} style={[styles.card, (waitingForMe || waitingForAdmin || (isAdmin && r.status === 'pending_target')) && styles.cardAction]}>
         <View style={styles.head}>
           <Avatar emoji={requester?.avatar ?? '🙂'} color={requester?.color ?? colors.border} photoUrl={requester?.photoUrl} size={30} />
           <View style={styles.flex}>
@@ -61,10 +62,22 @@ export function RoutineRequestsList({ requests, usersById, currentUserId, isAdmi
             <Button label="אישור ועדכון השגרה" compact onPress={() => onDecide(r, true)} loading={busy} disabled={busy} style={styles.flex} />
             <Button label="דחייה" variant="secondary" compact onPress={() => onDecide(r, false)} disabled={busy} style={styles.flex} />
           </View>
+        ) : isAdmin && r.status === 'pending_target' ? (
+          // Owner request 2026-11-12: the other member may not be available
+          // to answer; the admin can approve (and update the routine) without them.
+          <View style={styles.actions}>
+            <Button
+              label={`אישור בלי לחכות ל${targetName(r)}`}
+              compact
+              onPress={() => onDecide(r, true)}
+              loading={busy}
+              disabled={busy}
+              style={styles.flex}
+            />
+            <Button label="דחייה" variant="secondary" compact onPress={() => onDecide(r, false)} disabled={busy} style={styles.flex} />
+          </View>
         ) : mineOpen ? (
           <Button label="ביטול הבקשה" variant="secondary" compact onPress={() => onCancel(r)} loading={busy} disabled={busy} style={styles.full} />
-        ) : isAdmin && r.status === 'pending_target' ? (
-          <Button label="דחייה" variant="secondary" compact onPress={() => onDecide(r, false)} disabled={busy} style={styles.full} />
         ) : null}
       </View>
     );
