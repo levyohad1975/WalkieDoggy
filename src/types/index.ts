@@ -453,3 +453,12 @@ export interface ChatMessage {
   /** Client-only, while this device is sending an image: local preview and upload progress (0..1). */
   upload?: { localUri: string; progress: number };
 }
+
+/** One person's reaction to a chat message (migration 20261112150100). emoji null = removed. */
+export interface ChatReaction {
+  messageId: string;
+  conversationId: string;
+  userId: string;
+  emoji: string | null;
+  updatedAt: string;
+}

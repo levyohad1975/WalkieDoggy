@@ -14,14 +14,17 @@ import {
 import { releasePreparedChatImage, type PreparedChatImage } from '../lib/chatImages';
 import {
   CHAT_PAGE_SIZE,
+  applyChatReactions,
   applyMessageToConversations,
+  nextChatReaction,
+  type ChatReactionsByMessage,
   mergeChatMessages,
   sortChatConversations,
   totalUnreadChatMessages,
   validateChatBody,
 } from '../logic/chat';
 import { chatAttachmentPath, checkPreparedChatImage } from '../logic/chatImages';
-import type { ChatConversationState, ChatMessage } from '../types';
+import type { ChatConversationState, ChatMessage, ChatReaction } from '../types';
 
 /**
  * Chat client state: the conversation list (the family conversation plus the
@@ -94,6 +97,8 @@ interface ChatState {
   sendErrors: Record<string, string>;
   /** True while a private conversation is being opened/created. */
   openingDirect: boolean;
+  /** Reactions by message id, then by user id (2026-11-12). */
+  reactions: ChatReactionsByMessage;
 
   start: (sessionKey: string) => Promise<void>;
   stop: () => void;
@@ -116,6 +121,8 @@ interface ChatState {
   clearForMe: () => Promise<boolean>;
   clearForEveryone: () => Promise<boolean>;
   setMuted: (muted: boolean) => Promise<void>;
+  /** Sets this profile's reaction; tapping the same emoji again removes it. */
+  react: (messageId: string, emoji: string) => Promise<void>;
   setScreenActive: (active: boolean) => void;
   setOnline: (online: boolean) => void;
   clearActionError: () => void;
@@ -135,6 +142,7 @@ const INITIAL = {
   live: 'reconnecting' as ChatLiveStatus,
   sendErrors: {} as Record<string, string>,
   openingDirect: false,
+  reactions: {} as ChatReactionsByMessage,
 };
 
 // Session bookkeeping lives outside the store: none of it is render state.
@@ -148,6 +156,8 @@ const inFlight = new Set<string>();
 const countedIds = new Set<string>();
 let markReadTimer: ReturnType<typeof setTimeout> | null = null;
 let listRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** Newest updated_at applied per "message|user", so an older row never undoes a newer reaction. */
+const reactionStamps = new Map<string, string>();
 
 interface PendingImage {
   image: PreparedChatImage;
@@ -202,6 +212,22 @@ export const useChatStore = create<ChatState>((set, get) => {
     });
   };
 
+  const applyReactions = (token: number, rows: ChatReaction[]) => {
+    if (!isCurrent(token) || rows.length === 0) return;
+    set({ reactions: applyChatReactions(get().reactions, rows, reactionStamps) });
+  };
+
+  /** Best-effort: reactions are decoration; a failure (or a backend without them) never breaks the thread. */
+  const loadReactions = (token: number, conversationId: string, messages: ChatMessage[]) => {
+    const transport = getChatTransport();
+    const ids = messages.filter((m) => m.delivery === 'sent' && !m.deletedAt).map((m) => m.id);
+    if (!transport.listReactions || ids.length === 0) return;
+    transport
+      .listReactions(conversationId, ids)
+      .then((rows) => applyReactions(token, rows))
+      .catch(() => undefined);
+  };
+
   const isBeingRead = (conversationId: string) =>
     get().screenActive && get().activeConversationId === conversationId;
 
@@ -250,6 +276,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       hasBeenLive = false;
       unsubscribe = transport.subscribe({
         onMessage: (message) => handleIncoming(token, message),
+        onReaction: (reaction) => {
+          if (!isCurrent(token)) return;
+          // Only for a conversation this session knows; RLS already limited delivery.
+          if (!get().conversations.some((c) => c.conversationId === reaction.conversationId)) return;
+          applyReactions(token, [reaction]);
+        },
         onConversationCleared: (conversationId, clearedAt) => {
           if (!isCurrent(token)) return;
           applyConversationClear(conversationId, clearedAt);
@@ -304,6 +336,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const current = threadOf(conversationId);
       const wasLoaded = current.status === 'ready';
       page.forEach((m) => countedIds.add(m.id));
+      loadReactions(token, conversationId, page);
       patchThread(conversationId, {
         status: 'ready',
         // Keep what this device already holds (older pages, unsent bubbles).
@@ -493,6 +526,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       clearTimers();
       inFlight.clear();
       countedIds.clear();
+      reactionStamps.clear();
       hasBeenLive = false;
       const release = unsubscribe;
       unsubscribe = null;
@@ -603,6 +637,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         const known = new Set(current.messages.map((m) => m.id));
         const fresh = page.filter((m) => !known.has(m.id));
         fresh.forEach((m) => countedIds.add(m.id));
+        loadReactions(token, conversationId, fresh);
         patchThread(conversationId, {
           messages: mergeChatMessages(current.messages, fresh),
           // A full page that still produced something new means there may be more.
@@ -796,6 +831,30 @@ export const useChatStore = create<ChatState>((set, get) => {
         if (!isCurrent(token)) return;
         apply(before);
         set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לעדכן את ההתראות. נסו שוב.') });
+      }
+    },
+
+    react: async (messageId, emoji) => {
+      const transport = getChatTransport();
+      const conversation = activeConversation();
+      if (!conversation || !transport.setReaction) return;
+      const token = generation;
+      const me = conversation.userId;
+      const before = get().reactions[messageId]?.[me];
+      const next = nextChatReaction(before, emoji);
+      const stamp = new Date().toISOString();
+      // Optimistic, and stamped "now" so a late echo of the previous state cannot undo it.
+      applyReactions(token, [{ messageId, conversationId: conversation.conversationId, userId: me, emoji: next, updatedAt: stamp }]);
+      try {
+        const saved = await transport.setReaction(messageId, next);
+        // From here the server's clock is the reference for this person's row.
+        if (isCurrent(token)) reactionStamps.delete(`${messageId}|${me}`);
+        applyReactions(token, [saved]);
+      } catch (error) {
+        if (!isCurrent(token)) return;
+        reactionStamps.delete(`${messageId}|${me}`);
+        applyReactions(token, [{ messageId, conversationId: conversation.conversationId, userId: me, emoji: before ?? null, updatedAt: stamp }]);
+        set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לשמור את התגובה. נסו שוב.') });
       }
     },
 
