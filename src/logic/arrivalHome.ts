@@ -20,7 +20,9 @@ import { haversineDistanceMeters } from './gpsDistance';
 
 export const ARRIVAL_RADIUS_METERS = 40;
 export const STAY_NEAR_HOME_METERS = 80;
-export const LEFT_HOME_METERS = 120;
+// 2026-11-12: a short morning loop peaked at 117 m and never asked; 90 m
+// still sits clearly beyond STAY_NEAR_HOME_METERS (80 m).
+export const LEFT_HOME_METERS = 90;
 export const MIN_WALK_MINUTES = 5;
 /** A gap longer than this between the last fix away and the first fix home means GPS was paused. */
 export const ARRIVAL_GAP_ESTIMATE_MS = 3 * 60 * 1000;

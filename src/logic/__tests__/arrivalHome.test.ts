@@ -15,6 +15,11 @@ describe('detectArrivalHome', () => {
     expect(detectArrivalHome([at(5, 0), at(30, 3), at(60, 6), at(20, 9)], home, T0)).toBeNull();
   });
 
+  it('asks after a short loop around the block (owner walk 2026-11-12, peak 117 m)', () => {
+    const route = [at(10, 0), at(60, 1), at(117, 3), at(95, 4), at(50, 6), at(39, 6.3), at(17, 6.7)];
+    expect(detectArrivalHome(route, home, T0)?.arrivedAt).toBe(T0 + 6 * 60_000);
+  });
+
   it('ignores passing by home on the way and walking on', () => {
     expect(detectArrivalHome([at(10, 0), at(300, 8), at(20, 14), at(250, 20)], home, T0)).toBeNull();
   });
