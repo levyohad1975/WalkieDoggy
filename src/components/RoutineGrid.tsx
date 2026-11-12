@@ -45,6 +45,11 @@ interface RoutineGridProps {
   onRequest?: (draft: RoutineRequestDraft) => Promise<void>;
   /** One-off shortcut: the existing request for the next walk in this cell. */
   onOneOff?: (day: number, time: string, mode: 'swap' | 'time') => void;
+  /**
+   * Ask to take only the next walk in another member's cell (owner request
+   * 2026-11-12). Resolves to a short label of that walk's date ("19.11").
+   */
+  onTakeOnce?: (day: number, time: string, ownerId: string) => Promise<string>;
   /** Admin: move one day's walk to another time (that day only). */
   onMoveCell?: (day: number, fromTime: string, toTime: string, userId: string) => Promise<void>;
 }
@@ -59,7 +64,7 @@ type CellSel = { time: string; day: number; userId: string | null };
  * instead of a row per rule. Tap a cell to choose who walks (this day, or
  * every day at this time); tap a time to move or remove the whole row.
  */
-export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime, currentUserId, requests = [], onRequest, onOneOff, onMoveCell }: RoutineGridProps) {
+export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeTime, onEditRule, onAddTime, currentUserId, requests = [], onRequest, onOneOff, onTakeOnce, onMoveCell }: RoutineGridProps) {
   const rows = useMemo(() => buildRoutineRows(rules), [rules]);
   const load = useMemo(() => weeklyLoad(rows), [rows]);
   const tints = useMemo(() => tintsByUser(users), [users]);
@@ -376,7 +381,22 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                 </RtlText>
                 {reqStep === 'menu' ? (
                   <>
-                    <RtlText style={styles.sheetSub}>שינוי קבוע בשגרה (מעכשיו והלאה)</RtlText>
+                    {!mine && onTakeOnce ? (
+                      <>
+                        <RtlText style={styles.sheetSub}>רק הפעם</RtlText>
+                        <Button
+                          label={`🙋 לקחת רק את הטיול הקרוב (יום ${DAY_SHORT_LABELS[req.day]})`}
+                          onPress={() => void run(async () => {
+                            const date = await onTakeOnce(req.day, req.time, req.ownerId);
+                            setSentNotice(`הבקשה לקחת את הטיול של ${date} נשלחה ל${owner?.name ?? 'בן המשפחה'}. אם הוא/היא לא זמינים, מנהל המשפחה יכול לאשר.`);
+                          }, () => setReq(null))}
+                          loading={busy}
+                          disabled={busy}
+                          style={styles.full}
+                        />
+                      </>
+                    ) : null}
+                    <RtlText style={[styles.sheetSub, !mine && onTakeOnce ? styles.oneOffTitle : null]}>{`שינוי קבוע: בכל יום ${DAY_LONG_LABELS[req.day]}, מעכשיו והלאה`}</RtlText>
                     {mine ? (
                       <>
                         <Button label="🔁 החלפה עם טיול של מישהו אחר" variant="secondary" onPress={() => setReqStep('swapPick')} disabled={busy} style={styles.full} />
@@ -386,14 +406,14 @@ export function RoutineGrid({ rules, users, dogName, canEdit, onApply, onChangeT
                     ) : (
                       <>
                         <Button
-                          label="🔁 החלפה עם טיול שלי"
+                          label="🔁 החלפה קבועה עם טיול שלי"
                           variant="secondary"
                           onPress={() => setReqStep('swapPick')}
                           disabled={busy || myCells.length === 0}
                           style={styles.full}
                         />
                         <Button
-                          label="🙋 אני רוצה לקחת את הטיול הזה"
+                          label={`🙋 לקחת את הטיול הזה בכל יום ${DAY_LONG_LABELS[req.day]} (קבוע)`}
                           variant="secondary"
                           onPress={() => sendRequest({ kind: 'take', targetUserId: req.ownerId, theirDay: req.day, theirTime: req.time }, owner?.name ?? null)}
                           loading={busy}

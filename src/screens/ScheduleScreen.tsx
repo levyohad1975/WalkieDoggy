@@ -18,10 +18,11 @@ import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal'
 import { RoutineGrid, type RoutineRequestDraft } from '../components/RoutineGrid';
 import { RoutineRequestsList } from '../components/RoutineRequestsList';
 import { planCellAssignment, type RoutineOp } from '../logic/routineGrid';
-import { routineRequestState, routineRequestSteps, type RoutineChangeRequest } from '../logic/routineRequests';
+import { routineRequestState, routineRequestSteps, shortDateLabel, type RoutineChangeRequest } from '../logic/routineRequests';
 import {
   cancelRoutineChangeRequest,
   createRoutineChangeRequest,
+  createWalkTakeOnceRequest,
   decideRoutineChangeRequest,
   listRoutineChangeRequests,
   respondRoutineChangeRequest,
@@ -324,6 +325,31 @@ export function ScheduleScreen() {
     void loadRoutineRequests();
   };
 
+  /**
+   * Owner request 2026-11-12: take only the next walk of another member in
+   * this cell (today's included while it has not started). The member, or
+   * the admin, approves; the server then moves that one walk.
+   */
+  const handleRoutineTakeOnce = async (day: number, time: string, ownerId: string): Promise<string> => {
+    const today = toLocalDateOnly(new Date());
+    const next = walks
+      .filter((w) => {
+        if (w.dogId !== dog?.id || w.status !== 'pending' || w.scheduledTime !== time || w.responsibleUserId !== ownerId) return false;
+        if (w.date < today) return false;
+        const [y, m, d] = w.date.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay() === day;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (!next) throw new Error('לא מצאנו טיול קרוב שלו/ה ביום ובשעה האלה.');
+    try {
+      await createWalkTakeOnceRequest(next.id);
+    } catch (e) {
+      throw new Error(routineRequestErrorMessage(e));
+    }
+    void loadRoutineRequests();
+    return shortDateLabel(next.date);
+  };
+
   /** "Just this once": open the existing request flow for the next walk in this cell. */
   const handleRoutineOneOff = (day: number, time: string, mode: 'swap' | 'time') => {
     const now = Date.now();
@@ -582,6 +608,7 @@ export function ScheduleScreen() {
             requests={routineRequests.filter((r) => r.dogId === dog?.id)}
             onRequest={isSupabaseConfigured ? handleRoutineRequest : undefined}
             onOneOff={isSupabaseConfigured ? handleRoutineOneOff : undefined}
+            onTakeOnce={isSupabaseConfigured ? handleRoutineTakeOnce : undefined}
             onMoveCell={handleRoutineMoveCell}
           />
           <RoutineRequestsList
@@ -593,11 +620,14 @@ export function ScheduleScreen() {
             onRespond={(r, accept) => void runRoutineRequestAction(r.id, async () => {
               await respondRoutineChangeRequest(r.id, accept);
               // The admin answering a request addressed to them approves it in the same tap.
-              if (accept && familyRole === 'admin') await approveRoutineRequest({ ...r, status: 'pending_admin' });
+              // (A one-off take is already applied by the server when accepted.)
+              if (accept && familyRole === 'admin' && r.kind !== 'take_once') await approveRoutineRequest({ ...r, status: 'pending_admin' });
+              if (accept && r.kind === 'take_once' && familyId) void useScheduleStore.getState().load(familyId);
             })}
             onDecide={(r, approve) => void runRoutineRequestAction(r.id, async () => {
               if (approve) await approveRoutineRequest(r);
               else await decideRoutineChangeRequest(r.id, false);
+              if (approve && r.kind === 'take_once' && familyId) void useScheduleStore.getState().load(familyId);
             })}
             onCancel={(r) => void runRoutineRequestAction(r.id, () => cancelRoutineChangeRequest(r.id))}
           />

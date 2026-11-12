@@ -5,6 +5,8 @@
 //   pending_target -> the other family member ("X asks to swap with you")
 //   pending_admin  -> the family admins ("waiting for your approval")
 //   approved / rejected -> the requester (and the other member, if any)
+// and for a one-off take of a single walk (take_once, migration
+// 20261112110000): pending_target -> the walk's member; approved -> both.
 //
 //   { requestId } — called by whichever device just moved the request.
 //   claim_routine_request_notice() runs AS THE CALLER: it returns the request
@@ -54,6 +56,12 @@ function json(body: unknown, status = 200): Response {
 
 const slot = (day: number | null, time: string | null) => (day === null || day === undefined || !time ? '' : `${DAYS[day] ?? ''} ${time}`);
 
+/** " (12.11)" for a one-off take's date (YYYY-MM-DD). */
+const dateLabel = (date: string | null) => {
+  const m = typeof date === 'string' ? /^\d{4}-(\d{2})-(\d{2})$/.exec(date) : null;
+  return m ? ` (${Number(m[2])}.${Number(m[1])})` : '';
+};
+
 /** What is being asked, in one Hebrew line. */
 function describe(c: any): string {
   const requester = c.requester_name ?? 'בן משפחה';
@@ -62,6 +70,7 @@ function describe(c: any): string {
     case 'swap': return `${requester} מבקש/ת להחליף באופן קבוע: ${slot(c.my_day, c.my_time)} של ${requester} תמורת ${slot(c.their_day, c.their_time)} של ${target}`;
     case 'give': return `${requester} מבקש/ת להעביר באופן קבוע את ${slot(c.my_day, c.my_time)} אל ${target}`;
     case 'take': return `${requester} מבקש/ת לקחת באופן קבוע את ${slot(c.their_day, c.their_time)} של ${target}`;
+    case 'take_once': return `${requester} מבקש/ת לקחת רק פעם אחת את הטיול של ${target} ב${slot(c.their_day, c.their_time)}${dateLabel(c.walk_date)}`;
     default: return `${requester} מבקש/ת להזיז באופן קבוע את טיול ${slot(c.my_day, c.my_time)} לשעה ${c.new_time}`;
   }
 }
@@ -92,9 +101,10 @@ Deno.serve(async (req: Request) => {
     let recipients: string[] = [];
     let title = '';
     let body = describe(c);
+    const once = c.kind === 'take_once';
     if (c.status === 'pending_target') {
       recipients = [c.target_user_id];
-      title = '🔁 בקשה לשינוי בשגרה';
+      title = once ? '🙋 בקשה לקחת טיול שלך' : '🔁 בקשה לשינוי בשגרה';
       body = `${body}. פתחו את האפליקציה כדי לאשר או לסרב.`;
     } else if (c.status === 'pending_admin') {
       recipients = await familyAdminProfileIds(serviceClient, c.family_id);
@@ -102,10 +112,10 @@ Deno.serve(async (req: Request) => {
       body = c.target_name && c.kind !== 'change_time' ? `${body} (${c.target_name} הסכים/ה).` : `${body}.`;
     } else if (c.status === 'approved') {
       recipients = [c.requester_user_id, c.target_user_id];
-      title = '✅ השינוי בשגרה אושר';
+      title = once ? '✅ הטיול הועבר' : '✅ השינוי בשגרה אושר';
     } else if (c.status === 'rejected') {
       recipients = [c.requester_user_id];
-      title = 'הבקשה לשינוי בשגרה לא אושרה';
+      title = once ? 'הבקשה לקחת את הטיול לא אושרה' : 'הבקשה לשינוי בשגרה לא אושרה';
     }
     const ids = [...new Set(recipients.filter(Boolean))];
     if (!ids.length || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return json({ ok: true, pushSent: 0 });

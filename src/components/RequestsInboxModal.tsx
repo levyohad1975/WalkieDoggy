@@ -199,7 +199,7 @@ export function RequestsInboxModal({
 
             {routineRequests && routineRequests.length > 0 ? (
               <>
-                <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>שינויים קבועים בשגרה</RtlText>
+                <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>בקשות בשגרה ולקיחת טיולים</RtlText>
                 {routineRequests.map((r) => (
                   <View key={r.id} style={styles.row}>
                     <View style={styles.rowHeader}>

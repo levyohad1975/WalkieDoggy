@@ -48,7 +48,8 @@ export function useRoutineChangeRequests(enabled: boolean, familyId: string | nu
  */
 export function RoutineRequestsHomeCard({ count, onOpen }: { count: number; onOpen: () => void }) {
   if (count === 0) return null;
-  const label = count === 1 ? 'בקשה לשינוי בשגרה ממתינה לך' : `${count} בקשות לשינוי בשגרה ממתינות לך`;
+  // Routine changes and one-off "take my walk" requests (2026-11-12).
+  const label = count === 1 ? 'בקשה בשגרת הטיולים ממתינה לך' : `${count} בקשות בשגרת הטיולים ממתינות לך`;
   return (
     <Pressable onPress={onOpen} style={styles.card} accessibilityRole="button" accessibilityLabel={`${label}. פתיחת ניהול השגרה`}>
       <RtlText style={styles.text}>{`🔁 ${label}`}</RtlText>

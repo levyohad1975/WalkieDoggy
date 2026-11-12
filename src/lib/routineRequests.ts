@@ -34,6 +34,8 @@ function toRequest(row: any): RoutineChangeRequest {
     status: row.status,
     createdAt: row.created_at,
     decidedAt: row.decided_at ?? null,
+    walkId: row.walk_id ?? null,
+    walkDate: row.walk_date ?? null,
   };
 }
 
@@ -82,6 +84,15 @@ export async function createRoutineChangeRequest(input: NewRoutineRequest): Prom
   return id;
 }
 
+/** Ask to take ONE walk of another member (migration 20261112110000). */
+export async function createWalkTakeOnceRequest(walkId: string, note?: string): Promise<string> {
+  const { data, error } = await client().rpc('create_walk_take_once_request', { p_walk_id: walkId, p_note: note ?? null });
+  if (error) throw error;
+  const id = data as string;
+  notify(id);
+  return id;
+}
+
 export async function cancelRoutineChangeRequest(id: string): Promise<void> {
   const { error } = await client().rpc('cancel_routine_change_request', { p_id: id });
   if (error) throw error;
@@ -109,6 +120,9 @@ export function routineRequestErrorMessage(error: unknown): string {
   if (/already a walk at that time/.test(text)) return 'יש כבר טיול בשעה הזו ביום הזה. בחרו שעה אחרת.';
   if (/different time/.test(text)) return 'בחרו שעה אחרת מהשעה הנוכחית.';
   if (/another family member/.test(text)) return 'בחרו בן משפחה אחר.';
+  if (/already an open request for this walk/.test(text)) return 'כבר יש בקשה פתוחה על הטיול הזה.';
+  if (/can no longer be taken|walk has changed/.test(text)) return 'הטיול הזה השתנה או כבר התחיל, ואי אפשר לקחת אותו. רעננו את המסך.';
+  if (/walk of another family member/.test(text)) return 'אפשר לבקש רק טיול של בן משפחה אחר.';
   if (/too many requests/.test(text)) return 'נשלחו הרבה בקשות היום. נסו שוב מחר.';
   if (/no longer open|not waiting/.test(text)) return 'הבקשה כבר טופלה. רעננו את המסך.';
   if (/admin required|read-only|no active profile/.test(text)) return 'אין הרשאה לפעולה הזו.';

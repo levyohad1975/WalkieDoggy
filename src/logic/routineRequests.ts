@@ -10,7 +10,12 @@
 import type { FamilyUser, ScheduleRule } from '../types';
 import { buildRoutineRows, DAY_LONG_LABELS } from './routineGrid';
 
-export type RoutineRequestKind = 'swap' | 'give' | 'take' | 'change_time';
+/**
+ * 'take_once' (owner request 2026-11-12, migration 20261112110000): take ONE
+ * pending walk of another member. Accepting it (the member, or the admin)
+ * reassigns that walk on the server; the routine rules are not touched.
+ */
+export type RoutineRequestKind = 'swap' | 'give' | 'take' | 'change_time' | 'take_once';
 export type RoutineRequestStatus = 'pending_target' | 'pending_admin' | 'approved' | 'rejected' | 'cancelled';
 
 export interface RoutineChangeRequest {
@@ -29,6 +34,9 @@ export interface RoutineChangeRequest {
   status: RoutineRequestStatus;
   createdAt: string;
   decidedAt: string | null;
+  /** take_once only: the exact walk and its date (YYYY-MM-DD). */
+  walkId?: string | null;
+  walkDate?: string | null;
 }
 
 /** One cell assignment: who walks at `time` on `day` from now on. */
@@ -57,6 +65,9 @@ export function routineRequestSteps(r: RoutineChangeRequest): RoutineRequestStep
         { time: r.myTime!, day: r.myDay!, userId: null },
         { time: r.newTime!, day: r.myDay!, userId: r.requesterUserId },
       ];
+    case 'take_once':
+      // One walk, reassigned by the server; nothing changes in the routine.
+      return [];
   }
 }
 
@@ -79,6 +90,8 @@ function routineCellEmpty(rules: ScheduleRule[], day: number, time: string): boo
  *  'stale'   the routine changed since; applying would overwrite someone
  */
 export function routineRequestState(rules: ScheduleRule[], r: RoutineChangeRequest): 'ok' | 'applied' | 'stale' {
+  // A one-off take is checked and applied by the server against the walk itself.
+  if (r.kind === 'take_once') return 'ok';
   const steps = routineRequestSteps(r);
   if (steps.every((s) => (s.userId ? routineCellOwner(rules, s.day, s.time) === s.userId : routineCellEmpty(rules, s.day, s.time)))) {
     return 'applied';
@@ -97,6 +110,12 @@ export function routineRequestState(rules: ScheduleRule[], r: RoutineChangeReque
   }
 }
 
+/** "12.11" for a YYYY-MM-DD date. */
+export function shortDateLabel(date: string | null | undefined): string {
+  const m = date ? /^\d{4}-(\d{2})-(\d{2})$/.exec(date) : null;
+  return m ? `${Number(m[2])}.${Number(m[1])}` : '';
+}
+
 export const routineSlotLabel = (day: number | null, time: string | null) =>
   day === null || time === null ? '' : `${DAY_LONG_LABELS[day] ?? ''} ${time}`;
 
@@ -113,6 +132,10 @@ export function describeRoutineRequest(r: RoutineChangeRequest, usersById: Recor
       return `${requester} מבקש/ת לקחת מ${target} את ${routineSlotLabel(r.theirDay, r.theirTime)}`;
     case 'change_time':
       return `${requester}: להזיז את ${routineSlotLabel(r.myDay, r.myTime)} לשעה ${r.newTime}`;
+    case 'take_once': {
+      const date = shortDateLabel(r.walkDate);
+      return `${requester} מבקש/ת לקחת מ${target} רק את הטיול של ${routineSlotLabel(r.theirDay, r.theirTime)}${date ? ` (${date})` : ''} · חד-פעמי`;
+    }
   }
 }
 
@@ -121,7 +144,7 @@ export function routineRequestStatusText(r: RoutineChangeRequest, usersById: Rec
   switch (r.status) {
     case 'pending_target': return `ממתין לתשובה של ${target}`;
     case 'pending_admin': return 'ממתין לאישור מנהל המשפחה';
-    case 'approved': return 'אושר ועודכן בשגרה';
+    case 'approved': return r.kind === 'take_once' ? 'אושר — הטיול הועבר' : 'אושר ועודכן בשגרה';
     case 'rejected': return 'לא אושר';
     case 'cancelled': return 'בוטל';
   }
@@ -131,7 +154,7 @@ export function routineRequestStatusText(r: RoutineChangeRequest, usersById: Rec
 export function openRequestCellKeys(requests: RoutineChangeRequest[]): Set<string> {
   const keys = new Set<string>();
   for (const r of requests) {
-    if (!isOpenRoutineRequest(r)) continue;
+    if (!isOpenRoutineRequest(r) || r.kind === 'take_once') continue;
     if (r.myDay !== null && r.myTime) keys.add(`${r.myDay}|${r.myTime}`);
     if (r.theirDay !== null && r.theirTime) keys.add(`${r.theirDay}|${r.theirTime}`);
   }
