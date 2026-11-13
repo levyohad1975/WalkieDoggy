@@ -509,7 +509,7 @@ export function StatisticsScreen() {
                 <RtlText style={[styles.kpiLabel, styles.rtlText]}>כלל הרשומות</RtlText>
                 <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
                   {horizon.upcomingScheduled > 0
-                    ? `${horizon.dueOrHistorical} עד עכשיו · ${horizon.upcomingScheduled} עוד מתוכננים`
+                    ? `${horizon.dueOrHistorical} עד עכשיו · ${horizon.upcomingScheduled} בהמשך`
                     : `${horizon.dueOrHistorical} עד עכשיו`}
                 </RtlText>
               </View>
@@ -545,7 +545,7 @@ export function StatisticsScreen() {
                   <RtlText style={[styles.kpiValue, styles.rtlText]}>{formatKpiDistance(distanceStats.totalMeters)}</RtlText>
                   <RtlText style={[styles.kpiLabel, styles.rtlText]}>מרחק כולל</RtlText>
                   {distanceStats.estimatedMeters > 0 ? (
-                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`כולל כ־${formatKpiDistance(distanceStats.estimatedMeters)} משוער מהבית`}</RtlText>
+                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`כולל ${formatKpiDistance(distanceStats.estimatedMeters)} משוער`}</RtlText>
                   ) : null}
                 </View>
               ) : null}
