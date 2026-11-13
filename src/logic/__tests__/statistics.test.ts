@@ -10,6 +10,7 @@ import {
   computeMemberDistribution,
   computeOnTimeStats,
   computePeePoopStats,
+  computeStatisticsHeadline,
   computePlannedVsSpontaneous,
   DEFAULT_STATISTICS_FILTERS,
   filterWalksByPeriod,
@@ -406,5 +407,34 @@ describe('computeInsights', () => {
       makeWalk({ id: '3', status: 'done', dogId: 'dog-2', completedByUserId: 'a' }),
     ];
     expect(computeInsights(twoDogs, {}, { 'dog-1': { name: 'ריקי' } }).some((s) => s.includes('ריקי'))).toBe(true);
+  });
+});
+
+describe('computeStatisticsHeadline', () => {
+  const at = (h: number, m: number) => new Date(2026, 7, 26, h, m).toISOString();
+  const onTime = () => makeWalk({ status: 'done', date: '2026-08-26', scheduledTime: '08:00', completedAt: at(8, 0) });
+  const late = () => makeWalk({ status: 'done', date: '2026-08-26', scheduledTime: '08:00', completedAt: at(9, 0) });
+  const unmarked = () => makeWalk({ status: 'pending', date: '2026-08-26', scheduledTime: '09:00' });
+
+  it('flags late planned walks first', () => {
+    const h = computeStatisticsHeadline([onTime(), late(), late(), unmarked(), unmarked(), unmarked()], 'בשבוע האחרון', NOW);
+    expect(h).toEqual({ tone: 'warning', text: 'בשבוע האחרון רק 1 מתוך 3 טיולים מתוכננים יצאו בזמן' });
+  });
+
+  it('then flags past walks nobody marked (future and ad-hoc ones do not count)', () => {
+    const future = makeWalk({ status: 'pending', date: '2026-08-26', scheduledTime: '23:00' });
+    const adhoc = makeWalk({ status: 'pending', date: '2026-08-26', scheduledTime: '09:00', isUnplanned: true });
+    const h = computeStatisticsHeadline([onTime(), unmarked(), unmarked(), unmarked(), future, adhoc], 'בטווח הזה', NOW);
+    expect(h).toEqual({ tone: 'warning', text: '3 טיולים שזמנם עבר עדיין לא סומנו' });
+  });
+
+  it('celebrates a genuinely good range', () => {
+    const h = computeStatisticsHeadline([onTime(), onTime(), onTime(), onTime(), onTime()], 'בחודש האחרון', NOW);
+    expect(h).toEqual({ tone: 'positive', text: 'בחודש האחרון 5 מתוך 5 טיולים בוצעו. כל הכבוד!' });
+  });
+
+  it('returns null when nothing stands out', () => {
+    expect(computeStatisticsHeadline([onTime(), late()], 'בטווח הזה', NOW)).toBeNull();
+    expect(computeStatisticsHeadline([], 'בטווח הזה', NOW)).toBeNull();
   });
 });
