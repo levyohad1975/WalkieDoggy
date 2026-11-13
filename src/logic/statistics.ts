@@ -350,5 +350,38 @@ export function computeInsights(
   return insights;
 }
 
+export interface StatisticsHeadline {
+  text: string;
+  tone: 'warning' | 'positive';
+}
+
+/**
+ * One sentence above the KPI tiles: the single most actionable thing in the
+ * current range, or null when nothing stands out (no headline is better than
+ * a filler one). Priority: late planned walks → past walks nobody marked →
+ * a genuinely good week. `rangeLabel` is the period phrase, e.g. "בשבוע האחרון".
+ */
+export function computeStatisticsHeadline(walks: Walk[], rangeLabel: string, now: Date = new Date()): StatisticsHeadline | null {
+  const onTime = computeOnTimeStats(walks);
+  const resolvedOnTime = onTime.onTime + onTime.late;
+  if (resolvedOnTime >= 3 && onTime.onTimePercent < 50) {
+    return { tone: 'warning', text: `${rangeLabel} רק ${onTime.onTime} מתוך ${resolvedOnTime} טיולים מתוכננים יצאו בזמן` };
+  }
+
+  const nowMs = now.getTime();
+  const unmarked = walks.filter((w) => w.status === 'pending' && !w.isUnplanned && walkDateTime(w).getTime() <= nowMs).length;
+  if (unmarked >= 3) {
+    return { tone: 'warning', text: `${unmarked} טיולים שזמנם עבר עדיין לא סומנו` };
+  }
+
+  const completion = computeCompletionStats(walks);
+  const resolved = completion.done + completion.notDone;
+  if (resolved >= 5 && completion.donePercentOfResolved >= 90 && (resolvedOnTime < 3 || onTime.onTimePercent >= 80)) {
+    return { tone: 'positive', text: `${rangeLabel} ${completion.done} מתוך ${resolved} טיולים בוצעו. כל הכבוד!` };
+  }
+
+  return null;
+}
+
 /** Re-exported for screens that only need the formatting rule and don't otherwise touch logic/gpsDistance.ts directly — keeps a single import source for "statistics-adjacent" formatting. */
 export { formatDistanceMeters };
