@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { motion, radii, spacing } from '../theme/tokens';
@@ -35,6 +35,31 @@ const V2_CELEBRATIONS: Record<string, { source: number; durationMs: number }> = 
 // shifting any surrounding layout.
 const CELEBRATION_MASCOT_SIZE = 168;
 
+/**
+ * Owner report 2026-11-13: "the animations don't appear after every walk".
+ * Each V2 asset is ~1 MB; the 5.1 s display window used to start at mount,
+ * so on a slow connection the asset could still be downloading when the
+ * celebration auto-dismissed — nothing was ever seen. Now the display window
+ * starts only once the mascot has actually loaded, and if it hasn't loaded
+ * within this long the static mascot (small, already cached) is shown instead.
+ */
+export const CELEBRATION_LOAD_TIMEOUT_MS = 2500;
+
+/**
+ * Renders the given celebration's animated asset invisibly so the browser
+ * downloads and caches it ahead of time (Home mounts this while a walk is
+ * about to end). Renders nothing for celebrations without a V2 asset.
+ */
+export function CelebrationAssetWarmup({ celebrationId }: { celebrationId: string }) {
+  const v2 = V2_CELEBRATIONS[celebrationId];
+  if (!v2) return null;
+  return (
+    <View pointerEvents="none" style={styles.warmup} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Image source={v2.source} style={styles.warmupImage} />
+    </View>
+  );
+}
+
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
   onDismiss: () => void;
@@ -64,6 +89,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   // whenever a new celebration starts; the effect below combines them.
   const [mascotReady, setMascotReady] = useState(false);
   const [entranceArrived, setEntranceArrived] = useState(false);
+  // True once the animated asset missed CELEBRATION_LOAD_TIMEOUT_MS: switch
+  // to the static mascot so there is always something to see.
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
@@ -119,6 +148,21 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   const highFivePose = celebration && !v2Celebration ? highFivePoseForCelebration(celebration.id) : undefined;
   const frames = celebration && !v2Celebration && !highFivePose ? framesForCelebration(celebration.id) : undefined;
 
+  // Per-celebration readiness resets only when a NEW celebration starts —
+  // never when the reduced-motion check resolves, or an asset that already
+  // loaded (onLoad fired first) would be forgotten and time out needlessly.
+  const mascotReadyRef = useRef(false);
+  const markMascotReady = useCallback(() => {
+    mascotReadyRef.current = true;
+    setMascotReady(true);
+  }, []);
+  useEffect(() => {
+    mascotReadyRef.current = false;
+    setMascotReady(false);
+    setEntranceArrived(false);
+    setLoadTimedOut(false);
+  }, [celebration?.id]);
+
   useEffect(() => {
     if (!celebration || !motionChecked) return;
     // Real-device QA fix — the bubble used to appear on a fixed 360ms
@@ -130,8 +174,6 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // celebration" are the only cases with nothing to wait for, so the
     // bubble still appears immediately there.
     setBubbleVisible(reducedMotion || (!v2Celebration && !frames && !highFivePose));
-    setMascotReady(false);
-    setEntranceArrived(false);
     scale.setValue(reducedMotion ? 1 : 0.94);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -140,23 +182,49 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    // Auto-dismiss is keyed to the celebration id rather than object identity,
-    // so harmless parent re-renders cannot restart the timer indefinitely.
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    // The animated asset may still be downloading: give it a bounded wait,
+    // then fall back to the static mascot (see CELEBRATION_LOAD_TIMEOUT_MS).
+    // A cached asset can finish loading before this effect even runs, so
+    // the ref is checked rather than assuming it hasn't loaded yet.
+    if (v2Celebration && !reducedMotion && !mascotReadyRef.current) {
+      loadTimeoutRef.current = setTimeout(() => {
+        if (!mascotReadyRef.current) setLoadTimedOut(true);
+      }, CELEBRATION_LOAD_TIMEOUT_MS);
+    }
+  }, [celebration?.id, frames, highFivePose, v2Celebration, motionChecked, scale, reducedMotion, translateY]);
+
+  // Auto-dismiss is keyed to the celebration id rather than object identity,
+  // so harmless parent re-renders cannot restart the timer indefinitely. For
+  // the animated V2 assets the window starts only once the mascot is actually
+  // on screen (mascotReady), so a slow download no longer eats the whole
+  // display time; everything else starts immediately, as before.
+  const waitsForMascot = !!v2Celebration && !reducedMotion;
+  const dismissClockStarted = !!celebration && motionChecked && (!waitsForMascot || mascotReady || loadTimedOut);
+  useEffect(() => {
+    if (!dismissClockStarted) {
+      // A new celebration resets readiness — drop a timer started on stale state.
+      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+      return;
+    }
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    const visualDuration = v2Celebration && !reducedMotion ? v2Celebration.durationMs : 2600;
+    const visualDuration = v2Celebration && !reducedMotion && !loadTimedOut ? v2Celebration.durationMs : 2600;
     const dismissDelay = screenReaderEnabled ? Math.max(6500, visualDuration + 1200) : visualDuration;
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), dismissDelay);
-  }, [celebration?.id, frames, highFivePose, v2Celebration, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- started once per celebration; see comment above
+  }, [celebration?.id, dismissClockStarted]);
 
   // Real-device QA round 8 — the bubble reveals once BOTH the mascot is
   // ready and the entrance slide has actually arrived, so it never shows
   // while the character is still sliding in from off-screen.
   useEffect(() => {
-    if (mascotReady && entranceArrived) setBubbleVisible(true);
-  }, [mascotReady, entranceArrived]);
+    if ((mascotReady || loadTimedOut) && entranceArrived) setBubbleVisible(true);
+  }, [mascotReady, loadTimedOut, entranceArrived]);
 
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
   }, []);
 
   if (!celebration) return null;
@@ -164,7 +232,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <MascotSafeZone from="left" anchor={anchor} testID="completion-mascot-safe-zone" onEntranceComplete={() => setEntranceArrived(true)}>
+        <MascotSafeZone from="left" anchor={anchor ?? null} testID="completion-mascot-safe-zone" onEntranceComplete={() => setEntranceArrived(true)}>
           <Animated.View style={[styles.moment, { transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {bubbleVisible ? (
               <View style={styles.speechBubbleWrap}>
@@ -175,12 +243,12 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
             <Animated.View style={{ transform: [{ scale }] }}>
               {v2Celebration ? (
                 <Image
-                  source={reducedMotion ? COMPLETION_MASCOT : v2Celebration.source}
+                  source={reducedMotion || loadTimedOut ? COMPLETION_MASCOT : v2Celebration.source}
                   style={styles.v2Mascot}
                   resizeMode="contain"
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
-                  onLoad={() => setMascotReady(true)}
+                  onLoad={markMascotReady}
                 />
               ) : highFivePose ? (
                 <MascotPoseCelebration
@@ -189,7 +257,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
-                  onReady={() => setMascotReady(true)}
+                  onReady={markMascotReady}
                 />
               ) : frames ? (
                 <MascotFrameAnimation
@@ -199,7 +267,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
-                  onReady={() => setMascotReady(true)}
+                  onReady={markMascotReady}
                 />
               ) : null}
             </Animated.View>
@@ -220,6 +288,8 @@ const styles = StyleSheet.create({
   // character, it only keeps the speech bubble's relative offsets correct.
   moment: { width: 168, alignItems: 'center' },
   v2Mascot: { width: CELEBRATION_MASCOT_SIZE, height: CELEBRATION_MASCOT_SIZE },
+  warmup: { position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', left: -10, top: -10 },
+  warmupImage: { width: 1, height: 1 },
   // Compact diagonal speech bubble: it sits above-left of the mascot, over
   // the free space above the last-walk time, while the mascot itself remains
   // exactly centred in the gap between edit and pee/poop controls.

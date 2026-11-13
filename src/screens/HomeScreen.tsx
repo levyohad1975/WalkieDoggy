@@ -36,7 +36,7 @@ import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { HelpCenterModal } from '../components/HelpCenterModal';
 import { RemindersModal } from '../components/RemindersModal';
 import { Button } from '../components/Button';
-import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { CelebrationAssetWarmup, WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
@@ -333,15 +333,18 @@ export function HomeScreen() {
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
-  const lastWalkMascotLaneRef = useRef<View>(null);
-  const [lastWalkMascotAnchor, setLastWalkMascotAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const measureLastWalkMascotLane = useCallback(() => {
-    requestAnimationFrame(() => {
-      lastWalkMascotLaneRef.current?.measureInWindow((x, y, width, height) => {
-        if (width > 0 && height > 0) setLastWalkMascotAnchor({ x, y, width, height });
-      });
-    });
-  }, []);
+  // Owner report 2026-11-13: the celebration used to be anchored to the
+  // last-walk card's lane, measured once on layout. After scrolling, or once
+  // finishing a walk reshuffled Home, that measurement was stale and the
+  // mascot landed near the bottom of the screen. It is now centred in the
+  // viewport (MascotSafeZone's un-anchored stage) — no measurement to go stale.
+  //
+  // The celebration is picked as soon as a walk is about to end and its
+  // ~1 MB animated asset is warmed up in the background (see
+  // CelebrationAssetWarmup), so on a slow connection it's already cached by
+  // the time the walk is saved instead of loading during — and being cut off
+  // by — the celebration's own display window.
+  const [preparedCelebration, setPreparedCelebration] = useState<CompletionCelebration | null>(null);
   // Real-iPhone QA: the notification-open mascot moment must not cover the
   // next-walk card / Start Walk button. Measure that card's existing
   // wrapper (no layout change) so ReminderMascotPrompt can sit below it.
@@ -368,18 +371,22 @@ export function HomeScreen() {
   const [requestPrompt, setRequestPrompt] = useState<RequestOpenEvent | null>(null);
   const showWalkCompletionCelebration = useCallback((durationMinutes?: number) => {
     try {
-      const picked = selectWalkCompletionCelebration({
+      const fresh = selectWalkCompletionCelebration({
         completedAt: new Date(),
         durationMinutes,
         recentIds: recentCelebrationIds,
       });
+      // Keep the prepared (already-downloading) one unless the time-of-day
+      // context changed in between (e.g. a walk that crossed into night).
+      const picked = preparedCelebration && (preparedCelebration.timeOfDay === fresh.timeOfDay) ? preparedCelebration : fresh;
+      setPreparedCelebration(null);
       suppressAchievementPopupRef.current = true;
       setCelebration(picked);
       setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
     } catch {
       // Purely cosmetic — never block or interrupt a successfully saved walk.
     }
-  }, [recentCelebrationIds]);
+  }, [recentCelebrationIds, preparedCelebration]);
 
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
@@ -1254,6 +1261,17 @@ export function HomeScreen() {
   // testModeUserId is set, regardless of which button or screen triggers it.
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
+  // A walk is about to end (one is in progress, or a completion/ad-hoc form
+  // is open): pick its celebration now so the asset can download meanwhile.
+  const walkEndingSoon = Boolean(completeWalkId || addUnplannedVisible || remoteFinishRequest || walks.some((w) => w.status === 'in_progress'));
+  useEffect(() => {
+    if (!walkEndingSoon || preparedCelebration) return;
+    try {
+      setPreparedCelebration(selectWalkCompletionCelebration({ completedAt: new Date(), recentIds: recentCelebrationIds }));
+    } catch {
+      // Cosmetic only.
+    }
+  }, [walkEndingSoon, preparedCelebration, recentCelebrationIds]);
   // Owner request 2026-11-03 (PRD §GPS, phase 1 "assistive"): the walk tracked
   // on this device came back home but is still running — ask whether it
   // ended, offering the arrival time as the end time. The user decides.
@@ -2011,8 +2029,6 @@ export function HomeScreen() {
                     </Pressable>
                   ) : null}
                   <View
-                    ref={lastWalkMascotLaneRef}
-                    onLayout={measureLastWalkMascotLane}
                     pointerEvents="none"
                     style={styles.dashboardLastWalkMascotLane}
                     testID="last-walk-mascot-lane"
@@ -2201,9 +2217,9 @@ export function HomeScreen() {
         }}
       />
 
+      {preparedCelebration && !celebration ? <CelebrationAssetWarmup celebrationId={preparedCelebration.id} /> : null}
       <WalkCompletionCelebration
         celebration={celebration}
-        anchor={lastWalkMascotAnchor}
         onDismiss={() => {
           // A walk completion is one brief, self-closing moment. Do not
           // chain another mascot overlay from the dismiss action.
