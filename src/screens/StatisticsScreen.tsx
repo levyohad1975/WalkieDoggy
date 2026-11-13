@@ -26,7 +26,6 @@ import {
   computeOnTimeStats,
   computePlannedVsSpontaneous,
   DEFAULT_STATISTICS_FILTERS,
-  formatDistanceMeters,
   periodToDateRange,
   type StatisticsFilters,
   type StatsPeriod,
@@ -107,6 +106,20 @@ function TrendChart({ points }: { points: { date: string; count: number }[] }) {
  * independent operational window, not a valid bulk-historical source.
  * Reactivity is preserved via useFocusEffect, same as before.
  */
+/** KPI tiles are glanceable: one decimal for km is enough (the walk detail keeps full precision). */
+function formatKpiDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} מ'`;
+  return `${(meters / 1000).toFixed(1)} ק״מ`;
+}
+
+/** Green only when it's genuinely good, warning when most planned walks went out late; neutral otherwise. */
+function onTimeValueStyle(stats: { onTime: number; late: number; onTimePercent: number }) {
+  if (stats.onTime + stats.late === 0) return null;
+  if (stats.onTimePercent >= 80) return styles.kpiValueDone;
+  if (stats.onTimePercent < 50) return styles.kpiValueWarning;
+  return null;
+}
+
 export function StatisticsScreen() {
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveUserId = useEffectiveUserId();
@@ -494,18 +507,30 @@ export function StatisticsScreen() {
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.ltrText]}>{completion.total}</RtlText>
                 <RtlText style={[styles.kpiLabel, styles.rtlText]}>כלל הרשומות</RtlText>
-                <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{horizon.dueOrHistorical} עד היום · {horizon.upcomingScheduled} מתוכננים בהמשך</RtlText>
+                <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                  {horizon.upcomingScheduled > 0
+                    ? `${horizon.dueOrHistorical} עד עכשיו · ${horizon.upcomingScheduled} עוד מתוכננים`
+                    : `${horizon.dueOrHistorical} עד עכשיו`}
+                </RtlText>
               </View>
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.kpiValueDone, styles.ltrText]}>{completion.done}</RtlText>
                 <RtlText style={[styles.kpiLabel, styles.rtlText]}>בוצעו</RtlText>
-                <RtlText style={[styles.kpiSubValue, styles.ltrText]}>{completion.donePercentOfResolved}%</RtlText>
+                {completion.done + completion.notDone > 0 ? (
+                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                    {`${completion.donePercentOfResolved}% מתוך ${completion.done + completion.notDone} שסומנו`}
+                  </RtlText>
+                ) : null}
               </View>
               <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.ltrText]}>{onTimeStats.onTimePercent}%</RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>בזמן</RtlText>
+                <RtlText style={[styles.kpiValue, onTimeValueStyle(onTimeStats), styles.ltrText]}>
+                  {onTimeStats.onTime + onTimeStats.late > 0 ? `${onTimeStats.onTimePercent}%` : '—'}
+                </RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>יצאו בזמן</RtlText>
                 {onTimeStats.onTime + onTimeStats.late > 0 ? (
-                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{onTimeStats.onTime + onTimeStats.late} רלוונטיים</RtlText>
+                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                    {`${onTimeStats.onTime} מתוך ${onTimeStats.onTime + onTimeStats.late} מתוכננים`}
+                  </RtlText>
                 ) : null}
               </View>
               <View style={styles.kpiTile}>
@@ -516,12 +541,11 @@ export function StatisticsScreen() {
               </View>
               {distanceStats.sessionCount > 0 ? (
                 <View style={styles.kpiTile}>
-                  <RtlText style={[styles.kpiValue, styles.ltrText]}>
-                    {distanceStats.estimatedMeters > 0 ? `≈ ${formatDistanceMeters(distanceStats.totalMeters)}` : formatDistanceMeters(distanceStats.totalMeters)}
-                  </RtlText>
+                  {/* RTL on purpose: in an LTR run the Hebrew unit lands on the right and reads before the number. */}
+                  <RtlText style={[styles.kpiValue, styles.rtlText]}>{formatKpiDistance(distanceStats.totalMeters)}</RtlText>
                   <RtlText style={[styles.kpiLabel, styles.rtlText]}>מרחק כולל</RtlText>
                   {distanceStats.estimatedMeters > 0 ? (
-                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`${formatDistanceMeters(distanceStats.measuredMeters)} נמדדו · ${formatDistanceMeters(distanceStats.estimatedMeters)} משוער מהבית`}</RtlText>
+                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`כולל כ־${formatKpiDistance(distanceStats.estimatedMeters)} משוער מהבית`}</RtlText>
                   ) : null}
                 </View>
               ) : null}
@@ -692,7 +716,8 @@ const styles = StyleSheet.create({
   kpiValue: { ...typography.statValue, color: colors.textPrimary },
   kpiValueDone: { color: colors.statusDone },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
-  kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
+  kpiSubValue: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginTop: 2 },
+  kpiValueWarning: { color: colors.warning },
   kpiEstimate: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginTop: 2 },
   inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
   metaTextStrong: { fontSize: 13, color: colors.textPrimary, fontWeight: '800' },
