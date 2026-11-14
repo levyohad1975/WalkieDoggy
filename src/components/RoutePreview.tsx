@@ -99,7 +99,7 @@ export function RoutePreview({ session, large = false, compact = false, live = f
   if (webMap) {
     const renderMap = (expanded: boolean) => React.createElement('iframe', {
       title: 'מפת רחובות ומסלול GPS',
-      srcDoc: buildMapHtml(mapPoints, estimatedMapPoints, expanded, live, { tail: tailMapPoints, home: homePin, endNearHome, startNearHome, hasLead: Boolean(homeLead || reconstruction), hasTail: Boolean(homeTail) }),
+      srcDoc: buildMapHtml(mapPoints, estimatedMapPoints, expanded, live, { tail: tailMapPoints, home: homePin, endNearHome, startNearHome, hasLead: Boolean(homeLead || reconstruction), hasTail: Boolean(homeTail) }, { satelliteKey: expanded ? satelliteApiKey() : null }),
       sandbox: 'allow-scripts',
       style: { display: 'block', border: 0, width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', overflow: 'hidden', borderRadius: expanded ? 12 : 9, pointerEvents: expanded ? 'auto' : 'none' },
     });
@@ -221,19 +221,44 @@ export function expandedMapHeight(latLngs: number[][], window = Dimensions.get('
   return Math.round(Math.max(minHeight, Math.min(maxHeight, contentPx + 114)));
 }
 
+/**
+ * Owner request 2026-11-14: a clearer expanded map, with satellite imagery.
+ * The small row thumbnails keep the quiet Positron basemap (owner request
+ * 2026-11-02, so the walk stands out at that size); the expanded map uses
+ * OpenFreeMap's Liberty style (street names, parks, buildings), still free
+ * and keyless. Satellite imagery is Esri World Imagery, which needs an
+ * ArcGIS API key: the "לוויין" toggle appears only when
+ * EXPO_PUBLIC_ARCGIS_API_KEY is set. That key is a public, referrer-
+ * restricted client key (like the Supabase publishable key), not a secret.
+ */
+export const QUIET_BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
+export const DETAILED_BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+export const ESRI_IMAGERY_TILES = 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+// Esri requires both "Powered by Esri" and the imagery providers' credit.
+export const ESRI_IMAGERY_ATTRIBUTION = 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> | Esri, Maxar, Earthstar Geographics, and the GIS User Community';
+
+/** The ArcGIS key, or null when unset or not a plain token (it is embedded in the map's HTML). */
+export function satelliteApiKey(raw: string | undefined = process.env.EXPO_PUBLIC_ARCGIS_API_KEY): string | null {
+  const key = raw?.trim();
+  return key && /^[A-Za-z0-9._-]{8,512}$/.test(key) ? key : null;
+}
+
 /** Free vector basemap via OpenFreeMap and MapLibre. GPS coordinates never leave the browser except as ordinary map rendering data. */
-function buildMapHtml(
+export function buildMapHtml(
   points: number[][],
   estimatedPoints: number[][],
   expanded: boolean,
   live: boolean,
   homeLegs: { tail: number[][]; home: number[] | null; endNearHome: boolean; startNearHome?: boolean; hasLead: boolean; hasTail: boolean } = { tail: [], home: null, endNearHome: false, hasLead: false, hasTail: false },
+  options: { satelliteKey?: string | null } = {},
 ): string {
+  const satelliteKey = expanded ? satelliteApiKey(options.satelliteKey ?? undefined) : null;
+  const satelliteTiles = satelliteKey ? `${ESRI_IMAGERY_TILES}?token=${encodeURIComponent(satelliteKey)}` : null;
   const coords = JSON.stringify(points);
   const tailCoords = JSON.stringify(homeLegs.tail);
   const homeCoord = JSON.stringify(homeLegs.home);
   const estimateCoords = JSON.stringify(estimatedPoints);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B;width:20px;height:20px;font-size:9px} .walk-pin.end{background:#fff;font-size:16px} .walk-pin.home{background:#fff;font-size:15px} .walk-pin.stop{width:24px;height:24px;background:#0B5C75;font-size:10px}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B;width:20px;height:20px;font-size:9px} .walk-pin.end{background:#fff;font-size:16px} .walk-pin.home{background:#fff;font-size:15px} .walk-pin.stop{width:24px;height:24px;background:#0B5C75;font-size:10px} #basemap-toggle{position:absolute;z-index:5;top:12px;right:12px;border:0;border-radius:20px;padding:10px 14px;background:#fff;color:#183e48;font:600 14px system-ui;box-shadow:0 1px 4px #0003}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}${satelliteTiles ? '<button id="basemap-toggle" aria-pressed="false">🛰️ לוויין</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   const estimatedPoints = ${estimateCoords};
   const tailPoints = ${tailCoords};
@@ -244,8 +269,8 @@ function buildMapHtml(
   // Do not reverse the text or mirror the map: both corrupt street names and route geometry.
   if(maplibregl.setRTLTextPlugin){maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',true).catch(()=>{});}
   const map = new maplibregl.Map({
-    // Positron: a quiet light basemap so the walk stands out (owner request 2026-11-02).
-    container:'map',style:'https://tiles.openfreemap.org/styles/positron',
+    // Thumbnails: quiet Positron (2026-11-02). Expanded: detailed Liberty (2026-11-14).
+    container:'map',style:${JSON.stringify(expanded ? DETAILED_BASEMAP_STYLE : QUIET_BASEMAP_STYLE)},
     center:[initial[1],initial[0]],zoom:16,
     interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? '{compact:true}' : 'false'}
   });
@@ -254,6 +279,24 @@ function buildMapHtml(
   map.once('idle',foldAttribution);
   map.on('load',()=>{
     foldAttribution();
+    const satelliteTiles=${JSON.stringify(satelliteTiles)};
+    const toggle=document.getElementById('basemap-toggle');
+    if(satelliteTiles && toggle){
+      // Imagery sits under the style's labels (street names stay readable) and under the walk.
+      const firstLabel=(map.getStyle().layers||[]).find(l=>l.type==='symbol');
+      map.addSource('satellite',{type:'raster',tiles:[satelliteTiles],tileSize:256,maxzoom:19,attribution:${JSON.stringify(ESRI_IMAGERY_ATTRIBUTION)}});
+      map.addLayer({id:'satellite',type:'raster',source:'satellite',layout:{visibility:'none'}},firstLabel?firstLabel.id:undefined);
+      let satellite=false;
+      toggle.addEventListener('click',()=>{
+        satellite=!satellite;
+        map.setLayoutProperty('satellite','visibility',satellite?'visible':'none');
+        toggle.textContent=satellite?'🗺️ מפה':'🛰️ לוויין';
+        toggle.setAttribute('aria-pressed',String(satellite));
+        // Esri's credit must stay visible while its imagery is shown.
+        const attrib=document.querySelector('.maplibregl-ctrl-attrib');
+        if(attrib){if(satellite)attrib.classList.add('maplibregl-compact-show');else foldAttribution();}
+      });
+    }else if(toggle){toggle.style.display='none';}
     const coordinates=points.map(p=>[p[1],p[0]]);
     if(coordinates.length>1){
       map.addSource('walk-route',{type:'geojson',lineMetrics:true,data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});

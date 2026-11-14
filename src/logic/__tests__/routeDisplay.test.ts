@@ -55,7 +55,9 @@ describe('route display clean-up (drawing only)', () => {
   it('is applied by RoutePreview only to what is drawn, never to the stored distance', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
     expect(source).toContain('const drawnPoints = useMemo(() => (live ? points : routeForDisplay(points)), [points, live]);');
-    expect(source).toContain("style:'https://tiles.openfreemap.org/styles/positron'");
+    // Thumbnails stay on quiet Positron; the expanded map uses Liberty (2026-11-14).
+    expect(source).toContain("QUIET_BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'");
+    expect(source).toContain('style:${JSON.stringify(expanded ? DETAILED_BASEMAP_STYLE : QUIET_BASEMAP_STYLE)}');
     expect(source).toContain("'line-gradient'");
     expect(source).toContain('attributionControl:${expanded ? \'{compact:true}\' : \'false\'}');
     // The credit stays available behind ⓘ but starts folded.
