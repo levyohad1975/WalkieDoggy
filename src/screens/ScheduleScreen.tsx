@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute, type RouteProp } from '@react-navigation/native';
+import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
@@ -13,6 +15,19 @@ import { EmptyState, ErrorState } from '../components/EmptyState';
 import { EditWalkModal } from '../components/EditWalkModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal';
+import { RoutineGrid, type RoutineRequestDraft } from '../components/RoutineGrid';
+import { RoutineRequestsList } from '../components/RoutineRequestsList';
+import { planCellAssignment, type RoutineOp } from '../logic/routineGrid';
+import { routineRequestState, routineRequestSteps, shortDateLabel, type RoutineChangeRequest } from '../logic/routineRequests';
+import {
+  cancelRoutineChangeRequest,
+  createRoutineChangeRequest,
+  createWalkTakeOnceRequest,
+  decideRoutineChangeRequest,
+  listRoutineChangeRequests,
+  respondRoutineChangeRequest,
+  routineRequestErrorMessage,
+} from '../lib/routineRequests';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
@@ -21,8 +36,7 @@ import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
-import { isOverdue } from '../logic/nextWalk';
-import { previewRotation } from '../logic/rotation';
+import { dedupeCanonicalWalks, familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
@@ -64,7 +78,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function ScheduleScreen() {
-  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
   const {
     walks,
     rules,
@@ -129,12 +143,18 @@ export function ScheduleScreen() {
   );
 
   const [range, setRange] = useState<RangeKey>('week');
+  // Home's "a routine request is waiting for you" card opens the routine tab.
+  const route = useRoute<RouteProp<RootTabParamList, 'Schedule'>>();
+  const requestedRange = route.params?.range;
+  useEffect(() => {
+    if (requestedRange === 'routine') setRange('routine');
+  }, [requestedRange, route.key, route.params]);
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [overdueExpanded, setOverdueExpanded] = useState(true);
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
-  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
   const [requestSwapWalkId, setRequestSwapWalkId] = useState<string | null>(null);
   const [requestSwapTargetUserId, setRequestSwapTargetUserId] = useState<string | null>(null);
   const [requestTimeChangeWalkId, setRequestTimeChangeWalkId] = useState<string | null>(null);
@@ -164,7 +184,7 @@ export function ScheduleScreen() {
   // unfiltered `walks` on purpose — they resolve one already-known walk
   // regardless of which dog is currently selected.
   const visibleWalks = useMemo(
-    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    () => dedupeCanonicalWalks(dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
     [walks, dogs.length, dog?.id]
   );
   const visibleRules = useMemo(
@@ -205,6 +225,153 @@ export function ScheduleScreen() {
   // `sortOrder` column itself is left alone (no migration needed; nothing
   // still reads it for ordering, but other code/back-compat may still rely
   // on the column existing).
+  // Runs a routine-grid edit in order (removals before additions — the
+  // database refuses two rules for the same dog, time and day) and stops at
+  // the first failure, which the store already shows as actionError.
+  const applyRoutineOps = async (ops: RoutineOp[], dogId: string | undefined = dog?.id) => {
+    for (const op of ops) {
+      if (op.type === 'delete') {
+        await deleteRule(op.ruleId);
+      } else if (op.type === 'update') {
+        await updateRule(op.ruleId, { daysOfWeek: op.daysOfWeek });
+      } else if (dogId) {
+        await addRule({
+          id: generateId('rule'),
+          familyId,
+          dogId,
+          time: op.time,
+          daysOfWeek: op.daysOfWeek,
+          rotationUserIds: [op.userId],
+          rotationAnchorDate: toLocalDateOnly(new Date()),
+          sortOrder: rules.length,
+          active: true,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      if (useScheduleStore.getState().actionError) return;
+    }
+  };
+
+  // Permanent routine change requests (owner request 2026-11-10). Loaded
+  // while the routine tab is open and refreshed every 30 s there.
+  const [routineRequests, setRoutineRequests] = useState<RoutineChangeRequest[]>([]);
+  const [routineRequestBusyId, setRoutineRequestBusyId] = useState<string | null>(null);
+  const [routineRequestError, setRoutineRequestError] = useState<string | null>(null);
+  const loadRoutineRequests = async () => {
+    if (!isSupabaseConfigured || !familyId) return;
+    try {
+      setRoutineRequests(await listRoutineChangeRequests(familyId));
+    } catch {
+      /* the list stays as it was; the next refresh retries */
+    }
+  };
+  useEffect(() => {
+    if (range !== 'routine') return undefined;
+    void loadRoutineRequests();
+    const timer = setInterval(() => void loadRoutineRequests(), 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, familyId]);
+
+  const runRoutineRequestAction = async (id: string | null, work: () => Promise<void>) => {
+    setRoutineRequestBusyId(id);
+    try {
+      await work();
+    } catch (e) {
+      setRoutineRequestError(routineRequestErrorMessage(e));
+    } finally {
+      setRoutineRequestBusyId(null);
+      void loadRoutineRequests();
+    }
+  };
+
+  /** The admin applies the request to the routine, then marks it approved. */
+  const approveRoutineRequest = async (r: RoutineChangeRequest) => {
+    const rulesOf = () => useScheduleStore.getState().rules.filter((x) => x.dogId === r.dogId);
+    const state = routineRequestState(rulesOf(), r);
+    if (state === 'stale') {
+      throw new Error('השגרה השתנתה מאז שהבקשה נשלחה, ולכן אי אפשר לאשר אותה כמו שהיא. אפשר לדחות אותה ולעדכן את המשבצות ידנית.');
+    }
+    if (state === 'ok') {
+      for (const step of routineRequestSteps(r)) {
+        await applyRoutineOps(planCellAssignment(rulesOf(), step.time, [step.day], step.userId), r.dogId);
+        if (useScheduleStore.getState().actionError) {
+          throw new Error('עדכון השגרה לא הושלם. נסו לאשר שוב.');
+        }
+      }
+    }
+    await decideRoutineChangeRequest(r.id, true);
+  };
+
+  /** Admin: one day's walk moves to another time; the rest of the row stays. */
+  const handleRoutineMoveCell = async (day: number, fromTime: string, toTime: string, userId: string) => {
+    if (!dog) return;
+    const rulesOf = () => useScheduleStore.getState().rules.filter((x) => x.dogId === dog.id);
+    for (const step of [{ time: fromTime, userId: null }, { time: toTime, userId }]) {
+      await applyRoutineOps(planCellAssignment(rulesOf(), step.time, [day], step.userId));
+      if (useScheduleStore.getState().actionError) {
+        throw new Error('שינוי השעה לא הושלם. בדקו את הטבלה ונסו שוב.');
+      }
+    }
+  };
+
+  const handleRoutineRequest = async (draft: RoutineRequestDraft) => {
+    if (!dog) return;
+    try {
+      await createRoutineChangeRequest({ ...draft, dogId: dog.id });
+    } catch (e) {
+      throw new Error(routineRequestErrorMessage(e));
+    }
+    void loadRoutineRequests();
+  };
+
+  /**
+   * Owner request 2026-11-12: take only the next walk of another member in
+   * this cell (today's included while it has not started). The member, or
+   * the admin, approves; the server then moves that one walk.
+   */
+  const handleRoutineTakeOnce = async (day: number, time: string, ownerId: string): Promise<string> => {
+    const today = toLocalDateOnly(new Date());
+    const next = walks
+      .filter((w) => {
+        if (w.dogId !== dog?.id || w.status !== 'pending' || w.scheduledTime !== time || w.responsibleUserId !== ownerId) return false;
+        if (w.date < today) return false;
+        const [y, m, d] = w.date.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay() === day;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (!next) throw new Error('לא מצאנו טיול קרוב שלו/ה ביום ובשעה האלה.');
+    try {
+      await createWalkTakeOnceRequest(next.id);
+    } catch (e) {
+      throw new Error(routineRequestErrorMessage(e));
+    }
+    void loadRoutineRequests();
+    return shortDateLabel(next.date);
+  };
+
+  /** "Just this once": open the existing request flow for the next walk in this cell. */
+  const handleRoutineOneOff = (day: number, time: string, mode: 'swap' | 'time') => {
+    const now = Date.now();
+    const next = walks
+      .filter((w) => {
+        if (w.dogId !== dog?.id || w.status !== 'pending' || w.scheduledTime !== time) return false;
+        const [y, m, d] = w.date.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay() === day && new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > now;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (!next) {
+      setRoutineRequestError('לא מצאנו טיול קרוב ביום ובשעה האלה.');
+      return;
+    }
+    if (mode === 'swap' ? canRequestSwapForWalk(next) : canRequestTimeChangeForWalk(next)) {
+      if (mode === 'swap') setRequestSwapWalkId(next.id);
+      else setRequestTimeChangeWalkId(next.id);
+    } else {
+      setRoutineRequestError('לטיול הקרוב כבר יש בקשה פתוחה, או שאי אפשר לבקש עליו שינוי.');
+    }
+  };
+
   const sortedRules = useMemo(() => {
     // Defensive UI de-duplication: legacy/raced writes may have persisted
     // multiple identical recurring slots. A schedule slot is defined by
@@ -261,6 +428,19 @@ export function ScheduleScreen() {
     isOverdue(w) &&
     (familyRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
+  // P1 (2026-10-15): the full "ממתינים לעדכון" list used to render directly
+  // on the Dashboard — every unresolved overdue walk regardless of age,
+  // which on real family data meant months of historical cards pushing
+  // everything else off Home. Home now shows only a compact count and
+  // links here; this is the one place the full, date-unbounded list lives
+  // — same data (visibleWalks, already dog-scoped above) and the exact
+  // same canResolveWalk/resolveWalk/skip authorization this screen's own
+  // day view already used, not a second data source or permission rule.
+  const allOverduePending = useMemo(
+    () => visibleWalks.filter((w) => w.date === familyDateOnly(new Date(), family?.timezone) && canResolveWalk(w)).sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)),
+    [visibleWalks, familyRole, effectiveUserId, family?.timezone]
+  );
+
   const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
 
   const requestSwapWalk = requestSwapWalkId ? walks.find((w) => w.id === requestSwapWalkId) : undefined;
@@ -278,6 +458,39 @@ export function ScheduleScreen() {
             entirely for a single-dog family. */}
         {dogs.length > 1 ? (
           <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
+        {/* P1 (2026-10-15): the full, date-unbounded "ממתינים לעדכון" list —
+            reachable from Home's compact summary, kept at the very top of
+            this screen so simply navigating here surfaces it without any
+            extra scroll-targeting logic. */}
+        {allOverduePending.length > 0 ? (
+          <View style={styles.section} testID="schedule-overdue-pending-section">
+            <Pressable
+              onPress={() => setOverdueExpanded((expanded) => !expanded)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: overdueExpanded }}
+              accessibilityLabel={overdueExpanded ? 'הסתר ממתינים לעדכון' : 'הצג ממתינים לעדכון'}
+              style={styles.completedGroupHeader}
+              testID="schedule-overdue-pending-toggle"
+            >
+              <RtlText style={styles.sectionTitle}>
+                {overdueExpanded ? 'הסתר ממתינים לעדכון' : 'ממתינים לעדכון'} ({allOverduePending.length})
+              </RtlText>
+              <RtlText style={styles.completedChevron}>{overdueExpanded ? '⌃' : '⌄'}</RtlText>
+            </Pressable>
+            {overdueExpanded ? <View style={styles.list}>
+              {allOverduePending.map((w) => (
+                <WalkRow
+                  key={w.id}
+                  walk={w}
+                  responsible={usersById[w.responsibleUserId]}
+                  onMarkDone={() => setResolveWalkId(w.id)}
+                  onMarkNotDone={() => skip(w.id)}
+                />
+              ))}
+            </View> : null}
+          </View>
         ) : null}
 
         <View style={styles.tabs}>
@@ -366,89 +579,58 @@ export function ScheduleScreen() {
         ) : null}
 
         <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
-          <View style={styles.sectionHeaderRow}>
-            {/*
-              FINAL CORRECTION PASS — Deliverable 3H: removed
-              adjustsFontSizeToFit/minimumFontScale — this is a short,
-              bounded string ("שעות קבועות (N)") with no realistic overflow
-              risk at any phone width; the auto-shrink was an unreviewed
-              leftover, not a real fix for anything, and is exactly the
-              pattern WalkRow's own redesign already established should
-              never be used for this reason (per its own doc comment).
-              numberOfLines alone is enough headroom for the rare case.
-            */}
-            <RtlText style={styles.sectionTitle} numberOfLines={1}>
-              טיולים קבועים ({sortedRules.length})
-            </RtlText>
-            {familyRole === 'admin' ? (
-  <Pressable
-    onPress={() => {
-      setEditingRule(null);
-      setRuleFormVisible(true);
-    }}
-  >
-    <RtlText style={styles.addLink}>+ הוספת טיול קבוע</RtlText>
-  </Pressable>
-) : null}
-          </View>
-
-          {sortedRules.length === 0 ? (
-            <RtlText style={styles.empty}>עדיין לא הוגדרו טיולים קבועים</RtlText>
-          ) : (
-            sortedRules.map((r) => (
-  <View key={r.id} style={styles.ruleRow}>
-    {familyRole === 'admin' ? (
-  <View style={styles.ruleActions}>
-    <Pressable
-      onPress={() => {
-        setEditingRule(r);
-        setRuleFormVisible(true);
-      }}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={`עריכת שעת טיול ${r.time}`}
-    >
-      <RtlText style={styles.ruleActionIcon}>✏️</RtlText>
-    </Pressable>
-
-    <Pressable
-      onPress={() => setDeleteRuleId(r.id)}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={`מחיקת שעת טיול ${r.time}`}
-      accessibilityHint="יוצג אישור לפני מחיקת שעת הטיול"
-    >
-      <RtlText style={styles.ruleActionIcon}>🗑️</RtlText>
-    </Pressable>
-  </View>
-) : null}
-
-    <View style={styles.ruleInfo}>
-      <RtlText style={styles.ruleTime}>
-        {r.time}
-        {r.label ? ` · ${r.label}` : ''}
-      </RtlText>
-
-      {/* RTL polish (final QA round): a long rotation ("דנה → יוסי → מיכל
-          → אורי") used to be forced onto one shrinking line, which on a
-          narrow phone could shrink names down past legibility or truncate
-          into an unreadable ellipsis — a name effectively reduced to
-          "bare dots". Wrapping instead of shrinking/truncating keeps every
-          name fully readable at a consistent size. */}
-      <RtlText style={styles.ruleRotation}>
-        {previewRotation(
-          r.rotationUserIds.map((id) => usersById[id]?.name ?? '?'),
-          r.rotationUserIds.length
-        )}
-      </RtlText>
-      <RtlText style={styles.ruleRotation}>
-        ימים: {r.daysOfWeek.slice().sort((a, b) => a - b).map((day) => ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'][day] ?? '?').join(' · ')}
-      </RtlText>
-    </View>
-  </View>
-))
-
-          )}
+          {/* Owner request 2026-11-09: the routine as one weekly table
+              (times × days) instead of a row per rule — see RoutineGrid and
+              logic/routineGrid.ts. Edits become ordinary rule operations. */}
+          <RoutineGrid
+            rules={sortedRules}
+            users={activeUsers}
+            dogName={dog?.name ?? 'הכלב/ה'}
+            canEdit={familyRole === 'admin'}
+            onApply={applyRoutineOps}
+            onChangeTime={async (oldTime, newTime) => {
+              for (const rule of sortedRules.filter((r) => r.active && r.time === oldTime)) {
+                await updateRule(rule.id, { time: newTime });
+                if (useScheduleStore.getState().actionError) return;
+              }
+            }}
+            onEditRule={(ruleId) => {
+              const rule = rules.find((r) => r.id === ruleId);
+              if (!rule) return;
+              setEditingRule(rule);
+              setRuleFormVisible(true);
+            }}
+            onAddTime={() => {
+              setEditingRule(null);
+              setRuleFormVisible(true);
+            }}
+            currentUserId={effectiveUserId}
+            requests={routineRequests.filter((r) => r.dogId === dog?.id)}
+            onRequest={isSupabaseConfigured ? handleRoutineRequest : undefined}
+            onOneOff={isSupabaseConfigured ? handleRoutineOneOff : undefined}
+            onTakeOnce={isSupabaseConfigured ? handleRoutineTakeOnce : undefined}
+            onMoveCell={handleRoutineMoveCell}
+          />
+          <RoutineRequestsList
+            requests={routineRequests.filter((r) => r.dogId === dog?.id)}
+            usersById={usersById}
+            currentUserId={effectiveUserId}
+            isAdmin={familyRole === 'admin'}
+            busyId={routineRequestBusyId}
+            onRespond={(r, accept) => void runRoutineRequestAction(r.id, async () => {
+              await respondRoutineChangeRequest(r.id, accept);
+              // The admin answering a request addressed to them approves it in the same tap.
+              // (A one-off take is already applied by the server when accepted.)
+              if (accept && familyRole === 'admin' && r.kind !== 'take_once') await approveRoutineRequest({ ...r, status: 'pending_admin' });
+              if (accept && r.kind === 'take_once' && familyId) void useScheduleStore.getState().load(familyId);
+            })}
+            onDecide={(r, approve) => void runRoutineRequestAction(r.id, async () => {
+              if (approve) await approveRoutineRequest(r);
+              else await decideRoutineChangeRequest(r.id, false);
+              if (approve && r.kind === 'take_once' && familyId) void useScheduleStore.getState().load(familyId);
+            })}
+            onCancel={(r) => void runRoutineRequestAction(r.id, () => cancelRoutineChangeRequest(r.id))}
+          />
         </View>
         {range === 'routine' ? null : (
           <Pressable onPress={() => setRange('routine')} style={styles.manageRoutineButton} accessibilityRole="button">
@@ -534,24 +716,13 @@ export function ScheduleScreen() {
       />
 
       <ConfirmModal
-        visible={!!deleteRuleId}
-        title="למחוק את שעת הטיול הזו?"
-        message="טיולים עתידיים שטרם בוצעו יימחקו מהלוח. היסטוריה תישאר."
-        confirmLabel="מחק"
-        onConfirm={async () => {
-          if (deleteRuleId) await deleteRule(deleteRuleId);
-          setDeleteRuleId(null);
-        }}
-        onCancel={() => setDeleteRuleId(null)}
-      />
-
-      <ConfirmModal
         visible={!!actionError}
         title="אופס"
         message={actionError ?? ''}
         confirmLabel="הבנתי"
         onConfirm={clearActionError}
         onCancel={clearActionError}
+        hideCancel
       />
 
       {/*
@@ -634,12 +805,23 @@ export function ScheduleScreen() {
       />
 
       <ConfirmModal
+        visible={!!routineRequestError}
+        title="אופס"
+        message={routineRequestError ?? ''}
+        confirmLabel="הבנתי"
+        onConfirm={() => setRoutineRequestError(null)}
+        onCancel={() => setRoutineRequestError(null)}
+        hideCancel
+      />
+
+      <ConfirmModal
         visible={!!requestsError}
         title="אופס"
         message={requestsError ?? ''}
         confirmLabel="הבנתי"
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
+        hideCancel
       />
     </SafeAreaView>
   );
@@ -713,49 +895,5 @@ const styles = StyleSheet.create({
   fontSize: 13,
   flexShrink: 0,
   paddingStart: 8,
-},
-  ruleRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 10,
-  backgroundColor: colors.surface,
-  borderRadius: radii.lg,
-  borderWidth: 1,
-  borderColor: colors.border,
-  paddingHorizontal: spacing.md,
-  paddingVertical: spacing.sm,
-},
-
-ruleActions: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-  flexShrink: 0,
-},
-
-ruleActionIcon: {
-  fontSize: 16,
-  padding: 3,
-},
-
-ruleInfo: {
-  flex: 1,
-  gap: 2,
-  minWidth: 0,
-  alignItems: 'flex-end',
-},
-
-ruleTime: {
-  fontSize: 17,
-  fontWeight: '800',
-  color: colors.textPrimary,
-  textAlign: 'right',
-},
-
-ruleRotation: {
-  fontSize: 12,
-  color: colors.textSecondary,
-  textAlign: 'right',
-  width: '100%',
 },
 });

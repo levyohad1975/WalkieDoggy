@@ -323,3 +323,65 @@ describe('friendlyErrorMessage — create-verified-family Edge Function', () => 
     );
   });
 });
+
+/**
+ * P0 real-iPhone (2026-10-15): Walk Lifecycle v1.1 server version gate and
+ * the exact raise texts of 20261015100100_walk_lifecycle_gps_v11.sql. Before
+ * this, a v1.1 rejection fell through to the generic fallback plus a raw
+ * diagnostic dump.
+ */
+describe('friendlyErrorMessage — Walk Lifecycle v1.1', () => {
+  const { WalkLifecycleUnavailableError, WalkLifecycleUnverifiedOfflineError } = require('../../data/walkLifecycleCapability');
+
+  it('says explicitly that the server is not updated, for every unavailable reason', () => {
+    for (const error of [
+      new WalkLifecycleUnavailableError('not_installed'),
+      new WalkLifecycleUnavailableError('incomplete', 'execute:public.start_walk_v11(uuid,uuid,uuid,uuid,boolean,boolean)'),
+      new WalkLifecycleUnavailableError('missing_rpc', 'start_walk_v11'),
+    ]) {
+      const message = friendlyErrorMessage(error, [], 'fallback');
+      expect(message).toContain('השרת עדיין לא עודכן');
+      expect(message).toContain('WL11-SERVER');
+    }
+  });
+
+  it('distinguishes "cannot verify the server while offline"', () => {
+    expect(friendlyErrorMessage(new WalkLifecycleUnverifiedOfflineError(), [], 'fallback')).toContain('WL11-OFFLINE');
+  });
+
+  it.each([
+    ['another active walk already exists for this dog', 'כבר יש טיול פעיל לכלב הזה'],
+    ['resolved duplicate walk cannot be started', 'סומן ככפילות'],
+    ['profile changed; lifecycle action must be reviewed by the current member', 'הפרופיל הפעיל השתנה'],
+    ['assigned member can only start for themselves', 'רק עבור עצמו/ה'],
+    ['only assigned member or confirmed substitute may start this walk', 'מחליפ/ה'],
+    ['family admin required for remote start', 'מרחוק'],
+    ['actual walker or confirmed family admin required to finish', 'יכולים לסיים אותו'],
+    ['actual walker cannot be changed during finish', 'בזמן הסיום'],
+    ['walk finish operation is already recorded', 'כבר נרשם'],
+    ['completion time cannot be in the future', 'בעתיד'],
+  ])('maps the v1.1 server text %p', (raw: string, expected: string) => {
+    expect(friendlyErrorMessage({ code: 'P0001', message: raw }, [], 'fallback')).toContain(expected);
+  });
+});
+
+describe('friendlyErrorMessage — email OTP delivery', () => {
+  it('maps the iOS WebKit fetch failure without exposing raw technical text', () => {
+    expect(friendlyErrorMessage(new TypeError('Load failed'))).toBe(
+      'לא הצלחנו להתחבר לשרת. בדקו את החיבור ונסו שוב.'
+    );
+  });
+
+  it.each([
+    ['over_email_send_rate_limit', 'נשלחו יותר מדי בקשות קוד'],
+    ['Email rate limit exceeded', 'נשלחו יותר מדי בקשות קוד'],
+    ['Email address not authorized', 'השרת אינו מורשה לשלוח'],
+    ['email provider is not configured', 'שירות שליחת הדוא״ל אינו מוגדר'],
+    ['email provider failed', 'שליחת הדוא״ל נכשלה'],
+  ])('gives safe guidance for Auth delivery error %p', (raw, expected) => {
+    const message = friendlyErrorMessage(new Error(raw));
+    expect(message).toContain(expected);
+    expect(message).not.toContain('account');
+    expect(message).not.toContain('email exists');
+  });
+});

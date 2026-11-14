@@ -5,6 +5,7 @@ const sql = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/2026101
 const heartbeat = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/20261010173000_remote_gps_heartbeat.sql'),'utf8');
 const devicePicker = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/20261010174500_remote_gps_device_picker.sql'),'utf8');
 const pushBinding = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/20261010180000_remote_gps_push_device_binding.sql'),'utf8');
+const authoritativeWalkStatus = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/20261017170000_remote_gps_authoritative_walk_status.sql'),'utf8');
 const notify = fs.readFileSync(path.join(process.cwd(),'supabase/functions/remote-gps-notify/index.ts'),'utf8');
 const preliminary = fs.readFileSync(path.join(process.cwd(),'supabase/migrations/0110_remote_gps_commands.sql'),'utf8');
 
@@ -56,5 +57,15 @@ describe('remote GPS activation security contract',()=>{
   expect(pushBinding).toMatch(/auth_user_id=excluded\.auth_user_id/);
   expect(pushBinding).toMatch(/target_auth_user_id uuid,walk_id uuid/);
   expect(notify.match(/\.eq\('auth_user_id',targetAuthUserId\)/g)).toHaveLength(2);
+ });
+ it('returns server-authoritative walk state to the exact target and rechecks start at acknowledgement',()=>{
+  expect(authoritativeWalkStatus).toMatch(/drop function if exists get_my_remote_gps_commands\(\)/);
+  expect(authoritativeWalkStatus).toMatch(/walk_status text,[\s\S]*?walk_family_id uuid,[\s\S]*?walk_actual_walker_user_id uuid/);
+  expect(authoritativeWalkStatus).toMatch(/c\.target_auth_user_id=auth\.uid\(\) and c\.target_user_id=u and c\.family_id=f/);
+  expect(authoritativeWalkStatus).toMatch(/join walks w on w\.id=c\.walk_id and w\.family_id=c\.family_id/);
+  expect(authoritativeWalkStatus).toMatch(/select w\.status,[\s\S]*?from walks w where w\.id=c\.walk_id and w\.family_id=c\.family_id for share/);
+  expect(authoritativeWalkStatus).toMatch(/if p_tracking and walk_state is distinct from 'in_progress' then raise exception 'walk not started'/);
+  expect(authoritativeWalkStatus).toMatch(/set search_path=public/);
+  expect(authoritativeWalkStatus).toMatch(/revoke all on function acknowledge_remote_gps_start\(uuid,boolean,text\) from public,anon/);
  });
 });

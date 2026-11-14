@@ -31,6 +31,7 @@ const ALLOWED_OPERATION_TYPES = new Set([
   'upsertScheduleRule', 'deleteScheduleRule', 'addScheduleEntries',
   'updateScheduleEntry', 'deleteScheduleEntry', 'saveWalk', 'deleteWalk',
   'updateUserReminderSetting', 'updateUserGamificationSetting',
+  'updateUserChatNotificationSetting',
 ]);
 
 function safeOperationType(value: unknown): string {

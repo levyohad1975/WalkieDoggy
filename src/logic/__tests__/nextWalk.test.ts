@@ -20,6 +20,25 @@ function makeWalk(overrides: Partial<Walk>): Walk {
 const NOW = new Date('2026-08-26T18:00:00');
 
 describe('computeNextWalk', () => {
+  it('does not surface an audited duplicate start as the active card or timer source', () => {
+    const resolvedDuplicate = makeWalk({
+      id: 'resolved-duplicate', status: 'in_progress', startedAt: '2026-08-26T06:00:00Z',
+      duplicateResolutionGroupId: 'audit-group-1',
+    });
+    const pending = makeWalk({ id: 'next-pending', scheduledTime: '19:00' });
+
+    expect(computeNextWalk([resolvedDuplicate, pending], NOW)?.id).toBe('next-pending');
+  });
+
+  it('does not let an audited duplicate hide a pending copy of the same scheduled occurrence', () => {
+    const deduped = dedupeCanonicalWalks([
+      makeWalk({ id: 'resolved-copy', scheduleEntryId: 'same-entry', status: 'in_progress', duplicateResolutionGroupId: 'audit-group-1' }),
+      makeWalk({ id: 'actionable-copy', scheduleEntryId: 'same-entry', status: 'pending' }),
+    ]);
+    expect(deduped.map((walk) => walk.id)).toEqual(['actionable-copy']);
+    expect(computeNextWalk(deduped, NOW)?.id).toBe('actionable-copy');
+  });
+
   it('shows the first scheduled walk today before its time and never carries yesterday forward', () => {
     const walks = [
       makeWalk({ id: 'yesterday', date: '2026-08-25', scheduledTime: '21:00' }),
@@ -152,13 +171,24 @@ describe('family-local walk transition clock', () => {
 });
 
 describe('computeLastWalk', () => {
-  it('returns the most recently completed/skipped walk up to now', () => {
+  it('returns the most recently PERFORMED (done) walk, never a skipped one', () => {
     const walks = [
       makeWalk({ id: 'w1', scheduledTime: '07:00', status: 'done' }),
       makeWalk({ id: 'w2', scheduledTime: '14:00', status: 'skipped' }),
       makeWalk({ id: 'w3', scheduledTime: '20:00', status: 'pending' }),
     ];
-    expect(computeLastWalk(walks, NOW)?.id).toBe('w2');
+    // w2 is later but was skipped (dog did not go out) — the last walk is the
+    // last one actually performed, so w1.
+    expect(computeLastWalk(walks, NOW)?.id).toBe('w1');
+  });
+
+  it('ignores a more recent skipped walk when an earlier done walk exists', () => {
+    const walks = [
+      makeWalk({ id: 'done-0800', scheduledTime: '08:00', status: 'done' }),
+      makeWalk({ id: 'skipped-1330', scheduledTime: '13:30', status: 'skipped' }),
+      makeWalk({ id: 'skipped-1800', scheduledTime: '18:00', status: 'skipped' }),
+    ];
+    expect(computeLastWalk(walks, NOW)?.id).toBe('done-0800');
   });
 
   it('uses completedAt for a walk completed before its scheduled time', () => {
@@ -180,9 +210,9 @@ describe('computeLastWalk', () => {
     expect(computeLastWalk(walks, NOW)?.id).toBe('completed-early');
   });
 
-  it('returns undefined when there are no completed/skipped walks yet', () => {
-    const walks = [makeWalk({ status: 'pending' })];
-    expect(computeLastWalk(walks, NOW)).toBeUndefined();
+  it('returns undefined when no walk has been performed yet (pending or only skipped)', () => {
+    expect(computeLastWalk([makeWalk({ status: 'pending' })], NOW)).toBeUndefined();
+    expect(computeLastWalk([makeWalk({ id: 's', status: 'skipped' })], NOW)).toBeUndefined();
   });
 
   it('defaults `now` to the current time when omitted', () => {
@@ -429,5 +459,36 @@ describe('dailyWalkTimeline', () => {
     ];
 
     expect(dailyWalkTimeline(walks, NOW).map((item) => item.id)).toEqual(['done', 'skipped', 'active', 'future']);
+  });
+});
+
+
+describe('legacy pending orphan replay duplicates', () => {
+  const base = {
+    familyId: 'family-a', dogId: 'dog-a', date: '2026-10-16',
+    scheduledTime: '14:05', responsibleUserId: 'dad',
+    scheduleEntryId: undefined, status: 'pending' as const,
+    isUnplanned: false,
+  };
+  it('shows only one of two same-slot pending orphan rows created 27 seconds apart', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const second = makeWalk({ ...base, id: 'second', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, second]).map(w => w.id)).toEqual(['first']);
+    expect(dedupeCanonicalWalks([second, first]).map(w => w.id)).toEqual(['first']);
+  });
+  it('preserves independently planned slots and different dogs, families or assignees', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const separate = makeWalk({ ...base, id: 'later', createdAt: '2026-10-12T07:40:04Z' });
+    const otherDog = makeWalk({ ...base, id: 'other-dog', dogId: 'dog-b', createdAt: '2026-10-12T07:38:31Z' });
+    const otherFamily = makeWalk({ ...base, id: 'other-family', familyId: 'family-b', createdAt: '2026-10-12T07:38:31Z' });
+    const otherAssignee = makeWalk({ ...base, id: 'other-assignee', responsibleUserId: 'mom', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, separate, otherDog, otherFamily, otherAssignee])).toHaveLength(5);
+  });
+  it('never merges completed, spontaneous or separately linked scheduled walks', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const done = makeWalk({ ...base, id: 'done', status: 'done', createdAt: '2026-10-12T07:38:31Z' });
+    const spontaneous = makeWalk({ ...base, id: 'spontaneous', isUnplanned: true, createdAt: '2026-10-12T07:38:31Z' });
+    const linked = makeWalk({ ...base, id: 'linked', scheduleEntryId: 'entry-other', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, done, spontaneous, linked])).toHaveLength(4);
   });
 });

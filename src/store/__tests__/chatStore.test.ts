@@ -158,11 +158,12 @@ describe('chatStore', () => {
     it('a tapped notification opens its conversation, waiting for the list if needed', async () => {
       use(withDirect());
       const starting = store().start('family-a:user-me:self');
-      store().requestOpenConversation(DIRECT);
+      store().requestOpenConversation(DIRECT, 'message-target');
       expect(store().activeConversationId).toBeNull();
       await starting;
       await flush();
       expect(store().activeConversationId).toBe(DIRECT);
+      expect(store().notificationMessageId).toBe('message-target');
     });
 
     it('a notification for a conversation this profile cannot see opens nothing', async () => {

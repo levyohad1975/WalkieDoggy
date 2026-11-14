@@ -43,11 +43,19 @@ describe('send-email Auth hook', () => {
   });
 
   it('sends the numeric OTP from email_data.token for signup/OTP flows', () => {
-    expect(source).toContain('function templateFor(actionType: string, token: string)');
+    expect(source).toContain('function templateFor(');
     expect(source).toContain(
       'templateFor(email_data.email_action_type ?? \'signup\', email_data.token)'
     );
     expect(source).toContain('signup:');
+  });
+
+  it('formats the code for Apple Mail one-time-code AutoFill (subject, English phrase, plain text)', () => {
+    expect(source).toContain('const subject = `${token} - ${lead}`;');
+    expect(source).toContain('Your Walkie Doggy Link verification code is ${safeToken}');
+    expect(source).toContain('Your Walkie Doggy Link verification code is ${token}');
+    expect(source).toContain('text: args.text');
+    expect(source).toContain('await sendViaResend({ to: user.email, subject, html, text });');
   });
 
   it('never logs the OTP, hook secret, Resend API key, bearer tokens, or the raw/parsed payload', () => {

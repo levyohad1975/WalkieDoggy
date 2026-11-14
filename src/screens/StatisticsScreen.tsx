@@ -25,8 +25,8 @@ import {
   computeMemberDistribution,
   computeOnTimeStats,
   computePlannedVsSpontaneous,
+  computeStatisticsHeadline,
   DEFAULT_STATISTICS_FILTERS,
-  formatDistanceMeters,
   periodToDateRange,
   type StatisticsFilters,
   type StatsPeriod,
@@ -107,6 +107,21 @@ function TrendChart({ points }: { points: { date: string; count: number }[] }) {
  * independent operational window, not a valid bulk-historical source.
  * Reactivity is preserved via useFocusEffect, same as before.
  */
+/** KPI tiles are glanceable: one decimal for km is enough (the walk detail keeps full precision). */
+function formatKpiDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} מ'`;
+  return `${(meters / 1000).toFixed(1)} ק״מ`;
+}
+
+/** Green only when it's genuinely good, warning when most planned walks went out late; neutral otherwise (and for tiny samples). */
+function onTimeValueStyle(stats: { onTime: number; late: number; onTimePercent: number }) {
+  // Too few planned walks to judge — don't paint 1-of-1 as a red flag.
+  if (stats.onTime + stats.late < 3) return null;
+  if (stats.onTimePercent >= 80) return styles.kpiValueDone;
+  if (stats.onTimePercent < 50) return styles.kpiValueWarning;
+  return null;
+}
+
 export function StatisticsScreen() {
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveUserId = useEffectiveUserId();
@@ -226,9 +241,17 @@ export function StatisticsScreen() {
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(filteredWalks), [filteredWalks]);
   const onTimeStats = useMemo(() => computeOnTimeStats(filteredWalks), [filteredWalks]);
   const durationStats = useMemo(() => computeDurationStats(filteredWalks), [filteredWalks]);
-  const distanceStats = useMemo(() => computeDistanceStats(gpsSessions), [gpsSessions]);
+  // Owner request 2026-11-02: the estimated legs from/to home the walk map
+  // shows count too (only for dogs with a verified home location).
+  const homeByDogId = useMemo(() => Object.fromEntries(dogs.map((d) => [d.id, d.homeLocation])), [dogs]);
+  const distanceStats = useMemo(() => computeDistanceStats(gpsSessions, homeByDogId), [gpsSessions, homeByDogId]);
   const trend = useMemo(() => computeDailyTrend(filteredWalks), [filteredWalks]);
   const insights = useMemo(() => computeInsights(filteredWalks, usersById, dogsById), [filteredWalks, usersById, dogsById]);
+  const headline = useMemo(() => {
+    const rangeLabel = customRange ? 'בטווח הזה' : period === '7d' ? 'בשבוע האחרון' : period === '30d' ? 'בחודש האחרון' : 'עד היום';
+    return computeStatisticsHeadline(filteredWalks, rangeLabel);
+  }, [filteredWalks, period, customRange]);
+  const activeFilterCount = [filters.dogId, filters.memberId, filters.status !== 'all', filters.planned !== 'all'].filter(Boolean).length;
   const insightCards = useMemo(() => {
     const cards: { key: string; title: string; content: React.ReactNode }[] = [];
     if (trend.length > 1) cards.push({ key: 'trend', title: 'מגמה יומית', content: <TrendChart points={trend} /> });
@@ -305,26 +328,39 @@ export function StatisticsScreen() {
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <View style={styles.hero}>
           <RtlText style={styles.header} accessibilityRole="header">סטטיסטיקה ותובנות</RtlText>
-          <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים, הזמנים והחלוקה המשפחתית</RtlText>
         </View>
 
-        <View style={styles.filterHeaderRow}><RtlText style={styles.filterLabel}>טווח זמן</RtlText><RtlText style={styles.filterHint}>בחרו תקופה להצגת הנתונים</RtlText></View>
         <View style={styles.periodRow}>
-          {PERIOD_LABELS.map(([key, label]) => (
-            <Pressable
-              key={key}
-              onPress={() => setPeriod(key)}
-              style={[styles.periodChip, period === key && styles.periodChipActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: period === key }}
-              accessibilityLabel={`תקופה: ${label}`}
-            >
-              <RtlText style={[styles.periodChipText, period === key && styles.periodChipTextActive]}>{label}</RtlText>
-            </Pressable>
-          ))}
+          {/* "מותאם" sits at the far (left) end; picking it opens the date picker. A custom range is stored as period 'all' + customRange. */}
+          <Pressable
+            onPress={() => openRangePicker('start')}
+            style={[styles.periodChip, !!customRange && styles.periodChipActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !!customRange }}
+            accessibilityLabel="תקופה: טווח תאריכים מותאם"
+          >
+            <RtlText style={[styles.periodChipText, !!customRange && styles.periodChipTextActive]}>מותאם</RtlText>
+          </Pressable>
+          {PERIOD_LABELS.map(([key, label]) => {
+            const selected = !customRange && period === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  setCustomRange(null);
+                  setPeriod(key);
+                }}
+                style={[styles.periodChip, selected && styles.periodChipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`תקופה: ${label}`}
+              >
+                <RtlText style={[styles.periodChipText, selected && styles.periodChipTextActive]}>{label}</RtlText>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <Pressable style={styles.customRangeToggle} onPress={() => openRangePicker('start')} accessibilityRole="button"><RtlText style={styles.customRangeToggleText}>בחירת טווח תאריכים מותאם אישית</RtlText></Pressable>
         <View style={[styles.customRangeRow, !customRange && styles.customRangeRowCompact]}>
           <Pressable style={styles.customRangeButton} onPress={() => openRangePicker('start')} accessibilityRole="button">
             <RtlText style={styles.customRangeButtonText}>
@@ -396,7 +432,9 @@ export function StatisticsScreen() {
           accessibilityRole="button"
           accessibilityState={{ expanded: filtersExpanded }}
         >
-          <RtlText style={styles.filterToggleText}>{filtersExpanded ? 'הסתר סינון מתקדם ⌃' : 'סינון מתקדם ⌄'}</RtlText>
+          <RtlText style={styles.filterToggleText}>
+            {filtersExpanded ? 'הסתר סינון ⌃' : activeFilterCount > 0 ? `סינון (${activeFilterCount}) ⌄` : 'סינון ⌄'}
+          </RtlText>
         </Pressable>
 
         {filtersExpanded ? (
@@ -487,22 +525,39 @@ export function StatisticsScreen() {
           <EmptyState emoji="📈" title="אין עדיין נתונים בטווח או בסינון הזה" subtitle="הסטטיסטיקה תתמלא ככל שיירשמו טיולים" />
         ) : (
           <>
+            {headline ? (
+              <View style={[styles.headline, headline.tone === 'warning' ? styles.headlineWarning : styles.headlinePositive]} accessibilityRole="summary">
+                <RtlText style={[styles.headlineText, styles.rtlText]}>{headline.text}</RtlText>
+              </View>
+            ) : null}
             <View style={styles.kpiGrid}>
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.ltrText]}>{completion.total}</RtlText>
                 <RtlText style={[styles.kpiLabel, styles.rtlText]}>כלל הרשומות</RtlText>
-                <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{horizon.dueOrHistorical} עד היום · {horizon.upcomingScheduled} מתוכננים בהמשך</RtlText>
+                <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                  {horizon.upcomingScheduled > 0
+                    ? `${horizon.dueOrHistorical} עד עכשיו · ${horizon.upcomingScheduled} בהמשך`
+                    : `${horizon.dueOrHistorical} עד עכשיו`}
+                </RtlText>
               </View>
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.kpiValueDone, styles.ltrText]}>{completion.done}</RtlText>
                 <RtlText style={[styles.kpiLabel, styles.rtlText]}>בוצעו</RtlText>
-                <RtlText style={[styles.kpiSubValue, styles.ltrText]}>{completion.donePercentOfResolved}%</RtlText>
+                {completion.done + completion.notDone > 0 ? (
+                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                    {`${completion.donePercentOfResolved}% מתוך ${completion.done + completion.notDone} שסומנו`}
+                  </RtlText>
+                ) : null}
               </View>
               <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.ltrText]}>{onTimeStats.onTimePercent}%</RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>בזמן</RtlText>
+                <RtlText style={[styles.kpiValue, onTimeValueStyle(onTimeStats), styles.ltrText]}>
+                  {onTimeStats.onTime + onTimeStats.late > 0 ? `${onTimeStats.onTimePercent}%` : '—'}
+                </RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>יצאו בזמן</RtlText>
                 {onTimeStats.onTime + onTimeStats.late > 0 ? (
-                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{onTimeStats.onTime + onTimeStats.late} רלוונטיים</RtlText>
+                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>
+                    {`${onTimeStats.onTime} מתוך ${onTimeStats.onTime + onTimeStats.late} מתוכננים`}
+                  </RtlText>
                 ) : null}
               </View>
               <View style={styles.kpiTile}>
@@ -513,8 +568,12 @@ export function StatisticsScreen() {
               </View>
               {distanceStats.sessionCount > 0 ? (
                 <View style={styles.kpiTile}>
-                  <RtlText style={[styles.kpiValue, styles.ltrText]}>{formatDistanceMeters(distanceStats.totalMeters)}</RtlText>
+                  {/* RTL on purpose: in an LTR run the Hebrew unit lands on the right and reads before the number. */}
+                  <RtlText style={[styles.kpiValue, styles.rtlText]}>{formatKpiDistance(distanceStats.totalMeters)}</RtlText>
                   <RtlText style={[styles.kpiLabel, styles.rtlText]}>מרחק כולל</RtlText>
+                  {distanceStats.estimatedMeters > 0 ? (
+                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`כולל ${formatKpiDistance(distanceStats.estimatedMeters)} משוער`}</RtlText>
+                  ) : null}
                 </View>
               ) : null}
               <View style={styles.kpiTile}>
@@ -621,24 +680,22 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   hero: { width: '100%', gap: spacing.xs, paddingTop: spacing.xs },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  headerSubtitle: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
-  filterHeaderRow: { width: '100%', gap: 2 },
-  filterLabel: { width: '100%', ...typography.meta, fontWeight: '600', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  filterHint: { fontSize: 11, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.xs, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, padding: spacing.xs },
   periodChip: { flex: 1, backgroundColor: 'transparent', borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   periodChipTextActive: { color: colors.textInverse },
-  customRangeToggle: { alignSelf: 'flex-end', paddingVertical: 2 },
-  customRangeToggleText: { fontSize: 12, fontWeight: '600', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
   customRangeRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm, alignItems: 'center' },
   customRangeRowCompact: { display: 'none' },
   customRangeButton: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, alignItems: 'center' },
   customRangeButtonText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary, writingDirection: 'rtl' },
   customRangeClear: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   customRangeClearText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
-  filterToggleRow: { alignItems: 'center', paddingVertical: spacing.xs },
+  filterToggleRow: { alignSelf: 'flex-end', paddingVertical: 2 },
+  headline: { width: '100%', borderRadius: radii.lg, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  headlineWarning: { backgroundColor: colors.warningSoft },
+  headlinePositive: { backgroundColor: colors.statusDoneBg },
+  headlineText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', lineHeight: 21 },
   filterToggleText: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, writingDirection: 'rtl' },
   advancedFilters: { width: '100%', gap: spacing.md, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, padding: spacing.md, alignItems: 'stretch' },
   filterGroup: { width: '100%', gap: spacing.xs, alignItems: 'flex-end' },
@@ -684,7 +741,9 @@ const styles = StyleSheet.create({
   kpiValue: { ...typography.statValue, color: colors.textPrimary },
   kpiValueDone: { color: colors.statusDone },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
-  kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
+  kpiSubValue: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginTop: 2 },
+  kpiValueWarning: { color: colors.warning },
+  kpiEstimate: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginTop: 2 },
   inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
   metaTextStrong: { fontSize: 13, color: colors.textPrimary, fontWeight: '800' },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },

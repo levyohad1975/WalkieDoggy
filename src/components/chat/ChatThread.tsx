@@ -27,11 +27,14 @@ import { elevation, layout, nativeDirection, radii, spacing, typography } from '
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore, type ChatThread as ChatThreadState } from '../../store/chatStore';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { getChatTransport } from '../../lib/chat';
 import { pickChatImage, releasePreparedChatImage, type ChatImageSource, type PreparedChatImage } from '../../lib/chatImages';
 import { chatImageProblemMessage } from '../../logic/chatImages';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
+  CHAT_REACTIONS,
   buildChatListItems,
+  summarizeChatReactions,
   chatBodyLength,
   chatTextDirection,
   formatChatTime,
@@ -99,6 +102,18 @@ interface MessageRowProps {
   onRetry: (messageId: string) => void;
   onDiscard: (messageId: string) => void;
   onOpenImage: (message: ChatMessage) => void;
+  highlighted: boolean;
+  /** This message's reactions, user id -> emoji (2026-11-12). */
+  reactions?: Record<string, string>;
+  myUserId: string;
+  /** False while impersonating / in test mode (read-only chat). */
+  canReact: boolean;
+  pickerOpen: boolean;
+  detailsOpen: boolean;
+  nameOf: (userId: string) => string;
+  onOpenPicker: (messageId: string | null) => void;
+  onToggleDetails: (messageId: string) => void;
+  onReact: (messageId: string, emoji: string) => void;
 }
 
 const MessageRow = React.memo(function MessageRow({
@@ -115,6 +130,16 @@ const MessageRow = React.memo(function MessageRow({
   onRetry,
   onDiscard,
   onOpenImage,
+  highlighted,
+  reactions,
+  myUserId,
+  canReact,
+  pickerOpen,
+  detailsOpen,
+  nameOf,
+  onOpenPicker,
+  onToggleDetails,
+  onReact,
 }: MessageRowProps) {
   const { message, isMine, startsGroup } = item;
   const removed = Boolean(message.deletedAt);
@@ -122,6 +147,11 @@ const MessageRow = React.memo(function MessageRow({
   const direction = chatTextDirection(message.body);
   const time = formatChatTime(message.createdAt);
   const removable = canRemove && !removed && message.delivery === 'sent';
+  // Reactions (owner request 2026-11-12): long-press opens the six-emoji bar.
+  const reactable = canReact && !removed && message.delivery === 'sent';
+  const summary = removed ? [] : summarizeChatReactions(reactions, myUserId);
+  const myReaction = reactions?.[myUserId];
+  const onLongPress = () => (reactable ? onOpenPicker(message.id) : onSelect(message.id));
   // In a private conversation the other side is the conversation's title:
   // repeating their name and avatar on every bubble adds nothing.
   const showSender = !isMine && !isPrivate;
@@ -135,6 +165,7 @@ const MessageRow = React.memo(function MessageRow({
 
   const bubble = (
     <View
+      testID={`chat-message-${message.id}`}
       style={[
         styles.bubble,
         isMine ? styles.bubbleMine : styles.bubbleTheirs,
@@ -142,6 +173,7 @@ const MessageRow = React.memo(function MessageRow({
         removed && styles.bubbleRemoved,
         message.delivery === 'failed' && styles.bubbleFailed,
         selected && styles.bubbleSelected,
+        highlighted && styles.bubbleHighlighted,
       ]}
     >
       {showSender && startsGroup ? (
@@ -161,7 +193,7 @@ const MessageRow = React.memo(function MessageRow({
               maxWidth={imageMaxWidth}
               senderName={isMine ? 'אני' : sender.name}
               onOpen={onOpenImage}
-              onLongPress={() => onSelect(message.id)}
+              onLongPress={onLongPress}
               onCancelUpload={onDiscard}
             />
           ) : null}
@@ -197,15 +229,17 @@ const MessageRow = React.memo(function MessageRow({
             ) : null}
           </View>
         ) : null}
-        {removable && !hasImage ? (
+        {(removable || reactable) && !hasImage ? (
           <Pressable
-            onPress={() => onSelect(message.id)}
-            onLongPress={() => onSelect(message.id)}
+            onPress={removable ? () => onSelect(message.id) : undefined}
+            onLongPress={onLongPress}
             delayLongPress={350}
             accessibilityRole="button"
             accessibilityLabel={accessibilityLabel}
-            accessibilityHint="הקשה מציגה אפשרויות להודעה"
+            accessibilityHint={removable ? 'הקשה מציגה אפשרויות להודעה' : 'לחיצה ארוכה להוספת תגובה'}
             accessibilityState={{ selected }}
+            accessibilityActions={reactable ? [{ name: 'longpress', label: 'הוספת תגובה' }] : undefined}
+            onAccessibilityAction={reactable ? () => onOpenPicker(message.id) : undefined}
             style={styles.bubblePressable}
           >
             {bubble}
@@ -216,6 +250,68 @@ const MessageRow = React.memo(function MessageRow({
           </View>
         )}
       </View>
+
+      {summary.length > 0 ? (
+        <View style={[styles.reactionChips, isMine ? styles.reactionChipsMine : styles.reactionChipsTheirs, showSender && styles.rowActionsIndented]}>
+          {summary.map((r) => (
+            <Pressable
+              key={r.emoji}
+              onPress={() => onToggleDetails(message.id)}
+              onLongPress={reactable ? () => onOpenPicker(message.id) : undefined}
+              accessibilityRole="button"
+              accessibilityLabel={`${r.emoji} ${r.count}: ${r.userIds.map(nameOf).join(', ')}`}
+              accessibilityHint="הקשה מציגה מי הגיב"
+              style={[styles.reactionChip, r.mine && styles.reactionChipMine]}
+              hitSlop={4}
+            >
+              <RtlText style={styles.reactionChipText}>{r.count > 1 ? `${r.emoji} ${r.count}` : r.emoji}</RtlText>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {detailsOpen && summary.length > 0 ? (
+        <View style={[styles.reactionDetails, showSender && styles.rowActionsIndented]} accessibilityLiveRegion="polite">
+          <RtlText style={styles.reactionDetailsText}>
+            {summary.map((r) => `${r.emoji} ${r.userIds.map((id) => (id === myUserId ? 'אני' : nameOf(id))).join(', ')}`).join('   ·   ')}
+          </RtlText>
+        </View>
+      ) : null}
+      {pickerOpen && reactable ? (
+        <View style={[styles.reactionPicker, isMine ? styles.reactionChipsMine : styles.reactionChipsTheirs]} accessibilityRole="menu">
+          {CHAT_REACTIONS.map((emoji) => (
+            <Pressable
+              key={emoji}
+              onPress={() => onReact(message.id, emoji)}
+              accessibilityRole="button"
+              accessibilityLabel={myReaction === emoji ? `הסרת התגובה ${emoji}` : `תגובה ${emoji}`}
+              accessibilityState={{ selected: myReaction === emoji }}
+              style={[styles.reactionOption, myReaction === emoji && styles.reactionOptionMine]}
+            >
+              <RtlText style={styles.reactionOptionText}>{emoji}</RtlText>
+            </Pressable>
+          ))}
+          {removable && !selected ? (
+            <Pressable
+              onPress={() => { onOpenPicker(null); onSelect(message.id); }}
+              accessibilityRole="button"
+              accessibilityLabel="בחירת ההודעה למחיקה"
+              style={styles.reactionPickerAction}
+              hitSlop={6}
+            >
+              <RtlText style={styles.rowActionDanger}>מחיקה…</RtlText>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => onOpenPicker(null)}
+            accessibilityRole="button"
+            accessibilityLabel="סגירת התגובות"
+            style={styles.reactionPickerAction}
+            hitSlop={6}
+          >
+            <RtlText style={styles.rowActionMuted}>✕</RtlText>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* An image bubble's own tap opens the viewer, so its options are a
           separate, always-visible control instead of "tap the bubble". */}
@@ -308,10 +404,12 @@ interface ChatThreadProps {
   showBack: boolean;
   /** Extra bottom padding while the on-screen keyboard covers the page (web). */
   keyboardPadding: number;
+  focusMessageId?: string | null;
+  onFocusMessageHandled?: (messageId: string) => void;
 }
 
 /** One open conversation — the family group or a private one — with its composer. */
-export function ChatThread({ conversation, users, showBack, keyboardPadding }: ChatThreadProps) {
+export function ChatThread({ conversation, users, showBack, keyboardPadding, focusMessageId, onFocusMessageHandled }: ChatThreadProps) {
   const testModeUserId = useAuthStore((s) => s.testModeUserId);
   const impersonatingUserId = useAuthStore((s) => s.impersonatingUserId);
 
@@ -334,6 +432,8 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const clearForEveryone = useChatStore((s) => s.clearForEveryone);
   const setMuted = useChatStore((s) => s.setMuted);
   const closeConversation = useChatStore((s) => s.closeConversation);
+  const reactions = useChatStore((s) => s.reactions);
+  const react = useChatStore((s) => s.react);
   const clearActionError = useChatStore((s) => s.clearActionError);
 
   const { messages, hasMore, loadingOlder } = thread;
@@ -356,6 +456,12 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   // react-native-web's multiline field does not grow with its content by
   // itself; native does. Track the content height for web only.
   const [webInputHeight, setWebInputHeight] = useState(INPUT_LINE_HEIGHT);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [pickerMessageId, setPickerMessageId] = useState<string | null>(null);
+  const [detailsMessageId, setDetailsMessageId] = useState<string | null>(null);
+  const [focusMessageMissing, setFocusMessageMissing] = useState(false);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failedHistoryFocus = useRef<{ messageId: string; messageCount: number } | null>(null);
 
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const stickToBottom = useRef(true);
@@ -368,6 +474,8 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const other = conversation.otherUserId ? usersById.get(conversation.otherUserId) : undefined;
   const otherName = other?.name ?? FORMER_MEMBER.name;
   const otherLeft = isPrivate && Boolean(other?.removedAt);
+  // Read-only chat (impersonation, test mode, a departed member) takes no reactions either.
+  const canReact = !impersonatingUserId && !testModeUserId && !otherLeft && typeof getChatTransport().setReaction === 'function';
   const myUserId = conversation.userId;
   const items = useMemo(
     () => buildChatListItems(messages, myUserId, { unreadFrom: unreadDividerFrom }),
@@ -435,6 +543,45 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
     if (keyboardPadding > 0) scrollToLatest(false);
   }, [keyboardPadding, scrollToLatest]);
 
+  useEffect(() => () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+  }, []);
+
+  // A push can point to a message older than the first page. Load history
+  // page by page (under the same authenticated conversation access) until
+  // the target is present, or explain that it is no longer available.
+  useEffect(() => {
+    if (!focusMessageId || thread.status !== 'ready') return;
+    if (failedHistoryFocus.current?.messageId === focusMessageId) {
+      if (failedHistoryFocus.current.messageCount === messages.length) return;
+      failedHistoryFocus.current = null;
+    }
+    const index = items.findIndex((item) => 'message' in item && item.message.id === focusMessageId);
+    if (index >= 0) {
+      setFocusMessageMissing(false);
+      setHighlightedMessageId(focusMessageId);
+      const timer = setTimeout(() => {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      }, 80);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => {
+        setHighlightedMessageId((current) => current === focusMessageId ? null : current);
+        onFocusMessageHandled?.(focusMessageId);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+    if (hasMore && !loadingOlder) {
+      void loadOlder().then((loaded) => {
+        if (!loaded) failedHistoryFocus.current = { messageId: focusMessageId, messageCount: messages.length };
+      });
+      return;
+    }
+    if (!hasMore && !loadingOlder) {
+      setFocusMessageMissing(true);
+      onFocusMessageHandled?.(focusMessageId);
+    }
+  }, [focusMessageId, thread.status, items, messages.length, hasMore, loadingOlder, loadOlder, onFocusMessageHandled]);
+
   const draftLength = chatBodyLength(draft.trim());
   const overLimit = draftLength > CHAT_MESSAGE_MAX_LENGTH;
   const canSend = draftLength > 0 && !overLimit && thread.status === 'ready';
@@ -447,6 +594,15 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const updateDraft = useCallback((text: string) => {
     draftRef.current = text;
     setDraft(text);
+  }, []);
+
+  const nameOf = useCallback((userId: string) => usersById.get(userId)?.name ?? FORMER_MEMBER.name, [usersById]);
+  const handleReact = useCallback((messageId: string, emoji: string) => {
+    setPickerMessageId(null);
+    void react(messageId, emoji);
+  }, [react]);
+  const toggleDetails = useCallback((messageId: string) => {
+    setDetailsMessageId((current) => (current === messageId ? null : messageId));
   }, []);
 
   const toggleSelected = useCallback((messageId: string) => {
@@ -608,10 +764,21 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
           onRetry={retry}
           onDiscard={discard}
           onOpenImage={setViewerMessage}
+          highlighted={highlightedMessageId === item.message.id}
+          reactions={reactions[item.message.id]}
+          myUserId={myUserId}
+          canReact={canReact}
+          pickerOpen={pickerMessageId === item.message.id}
+          detailsOpen={detailsMessageId === item.message.id}
+          nameOf={nameOf}
+          onOpenPicker={setPickerMessageId}
+          onToggleDetails={toggleDetails}
+          onReact={handleReact}
         />
       );
     },
-    [usersById, isPrivate, conversation.canModerate, selectedIds, sendErrors, imageMaxWidth, retry, discard, toggleSelected]
+    [usersById, isPrivate, conversation.canModerate, selectedIds, sendErrors, imageMaxWidth, retry, discard, toggleSelected, highlightedMessageId,
+      reactions, myUserId, canReact, pickerMessageId, detailsMessageId, nameOf, toggleDetails, handleReact]
   );
 
   const readOnlyReason = impersonatingUserId
@@ -719,22 +886,25 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
           onContentSizeChange={handleContentSizeChange}
           onLayout={handleListLayout}
           onScroll={handleScroll}
+          onScrollToIndexFailed={({ index }) => {
+            setTimeout(() => listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 }), 100);
+          }}
           scrollEventThrottle={64}
           keyboardShouldPersistTaps="handled"
           initialNumToRender={40}
           windowSize={21}
           removeClippedSubviews={false}
           ListHeaderComponent={
-            hasMore ? (
+            focusMessageMissing ? (
+              <View style={styles.focusMissing} accessibilityRole="alert">
+                <RtlText style={styles.focusMissingText}>ההודעה כבר אינה זמינה. מוצגות ההודעות האחרונות בשיחה.</RtlText>
+              </View>
+            ) : hasMore ? (
               <View style={styles.olderRow}>
                 {loadingOlder ? (
                   <ActivityIndicator color={colors.primary} accessibilityLabel="טוען…" />
                 ) : (
-                  <Pressable
-                    onPress={handleLoadOlder}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.olderButton, pressed && styles.pressed]}
-                  >
+                  <Pressable onPress={handleLoadOlder} accessibilityRole="button" style={({ pressed }) => [styles.olderButton, pressed && styles.pressed]}>
                     <RtlText style={styles.olderLabel}>הודעות קודמות</RtlText>
                   </Pressable>
                 )}
@@ -1099,6 +1269,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   olderLabel: { ...typography.meta, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
+  focusMissing: { marginHorizontal: spacing.md, marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
+  focusMissingText: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
 
   dayRow: { alignItems: 'center', marginTop: spacing.lg, marginBottom: spacing.sm },
   dayLabel: {
@@ -1140,6 +1312,7 @@ const styles = StyleSheet.create({
   },
   bubbleTheirs: { backgroundColor: colors.surface, borderColor: colors.border, ...elevation.card },
   bubbleMine: { backgroundColor: colors.primarySoft, borderColor: '#C5EBEE' },
+  bubbleHighlighted: { backgroundColor: '#FFF4C2', borderColor: '#D79A00', borderWidth: 3 },
   bubbleRemoved: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, shadowOpacity: 0, elevation: 0 },
   bubbleFailed: { borderColor: colors.statusOverdue, borderStyle: 'dashed' },
   bubbleSelected: { borderColor: colors.primary, borderWidth: 2, paddingHorizontal: spacing.md - 1, paddingTop: spacing.sm - 1, paddingBottom: 5 },
@@ -1152,6 +1325,40 @@ const styles = StyleSheet.create({
   metaTextFailed: { color: colors.danger, fontWeight: '700', writingDirection: 'rtl' },
 
   rowActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, marginTop: 2 },
+  reactionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: -4 },
+  reactionChipsMine: { justifyContent: 'flex-start', paddingLeft: spacing.sm },
+  reactionChipsTheirs: { justifyContent: 'flex-end', paddingRight: spacing.sm },
+  reactionChip: {
+    minHeight: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reactionChipMine: { borderColor: colors.primary, backgroundColor: '#E6F4F3' },
+  reactionChipText: { fontSize: 14, color: colors.textPrimary },
+  reactionDetails: { marginTop: 2, paddingHorizontal: spacing.sm },
+  reactionDetailsText: { ...typography.meta, color: colors.textSecondary },
+  reactionPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radii.round,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'auto',
+  },
+  reactionOption: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  reactionOptionMine: { backgroundColor: '#E6F4F3' },
+  reactionOptionText: { fontSize: 22 },
+  reactionPickerAction: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.sm },
   rowActionsIndented: { paddingRight: layout.avatarSm + spacing.sm },
   rowAction: { minHeight: 36, justifyContent: 'center', paddingHorizontal: spacing.xs },
   rowActionDanger: { ...typography.meta, fontWeight: '700', color: colors.danger },

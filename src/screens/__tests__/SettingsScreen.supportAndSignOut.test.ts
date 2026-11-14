@@ -10,21 +10,23 @@ import fs from 'fs';
 describe('SettingsScreen wires support + sign-out (structural)', () => {
   const source = fs.readFileSync(require.resolve('../SettingsScreen'), 'utf8').replace(/\r\n/g, '\n');
 
-  it('reads the support address from EXPO_PUBLIC_SUPPORT_EMAIL, never a hardcoded address', () => {
-    expect(source).toMatch(/const supportEmail = process\.env\.EXPO_PUBLIC_SUPPORT_EMAIL;/);
-    expect(source).not.toMatch(/mailto:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  it('"✉️ פנייה לתמיכה" opens the in-app "כתבו לנו" form, never the mail app (owner request 2026-11-02)', () => {
+    expect(source).not.toMatch(/mailto:/);
+    expect(source).not.toMatch(/\bLinking\b/);
+    expect(source).toContain('<Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={handleContactSupport} style={styles.addButton} />');
+    const fnIdx = source.indexOf('const handleContactSupport = () => {');
+    expect(fnIdx).toBeGreaterThan(-1);
+    const fn = source.slice(fnIdx, source.indexOf('};', fnIdx));
+    expect(fn).toContain('setManagementVisible(false);');
+    expect(fn).toContain("setHelpCenterView('contact');");
+    expect(fn).toContain('setHelpCenterVisible(true);');
+    expect(source).toContain('<HelpCenterModal visible={helpCenterVisible} initialView={helpCenterView}');
   });
 
-  it('the support action only renders once an address is actually configured', () => {
-    const supportIdx = source.indexOf('{supportEmail ? (');
-    expect(supportIdx).toBeGreaterThan(-1);
-    const block = source.slice(supportIdx, supportIdx + 500);
-    expect(block).toContain('✉️ פנייה לתמיכה');
-  });
-
-  it('opens the configured address via Linking.openURL with a mailto: scheme', () => {
-    expect(source).toMatch(/import \{[^}]*\bLinking\b[^}]*\} from 'react-native';/);
-    expect(source).toMatch(/Linking\.openURL\(`mailto:\$\{supportEmail\}`\)/);
+  it('the help window opens on the requested view', () => {
+    const modal = fs.readFileSync(require.resolve('../../components/HelpCenterModal'), 'utf8');
+    expect(modal).toContain("export function HelpCenterModal({ visible, onClose, initialView = 'faq' }: HelpCenterModalProps) {");
+    expect(modal).toContain('setView(initialView);');
   });
 
   it('device disconnect is kept in the admin-only advanced area', () => {

@@ -10,16 +10,38 @@ import type {
   ScheduleRule,
   Walk,
   WalkGpsSession,
+  WalkStartAuthorization,
+  GpsRouteUpdate,
+  GpsReconstructionUpdate,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
-import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
+import {
+  capabilityFromProbe,
+  isMissingFunctionError,
+  isMissingRelationError,
+  WalkLifecycleUnavailableError,
+  type WalkLifecycleCapability,
+} from './walkLifecycleCapability';
+
+/**
+ * A v1.1 lifecycle RPC that does not exist on this server is a version
+ * mismatch, not a transient failure. Surface it as one typed error so the
+ * offline-first layer re-probes and the UI says so explicitly.
+ */
+function lifecycleRpcError(rpcName: string, error: unknown): unknown {
+  return isMissingFunctionError(error) ? new WalkLifecycleUnavailableError('missing_rpc', rpcName) : error;
+}
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in
 // upsertScheduleRule()/addScheduleEntries() once the real ~10s
 // Schedule-save bottleneck is confirmed fixed by an actual real-device
 // measurement.
 import { perfMark } from '../lib/perfTrace';
+
+/** PostgREST's default max rows per request. */
+const ROUTE_SAMPLE_PAGE_SIZE = 1000;
 
 /** Maps between the app's camelCase domain types and Supabase's snake_case rows. */
 
@@ -33,6 +55,7 @@ function toUser(row: any): FamilyUser {
     color: row.color,
     remindersEnabled: row.reminders_enabled,
     gamificationEnabled: row.gamification_enabled,
+    chatNotificationsEnabled: row.chat_notifications_enabled ?? true,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -57,6 +80,9 @@ function fromUser(user: FamilyUser) {
 }
 
 function toDog(row: any): Dog {
+  const homeLocation = Number.isFinite(Number(row.home_latitude)) && Number.isFinite(Number(row.home_longitude)) && row.home_verified_at && row.home_verified_by_user_id
+    ? { latitude: Number(row.home_latitude), longitude: Number(row.home_longitude), accuracyMeters: Number(row.home_accuracy_meters ?? 0), verifiedAt: row.home_verified_at, verifiedByUserId: row.home_verified_by_user_id }
+    : undefined;
   return {
     id: row.id,
     familyId: row.family_id,
@@ -67,6 +93,7 @@ function toDog(row: any): Dog {
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
     sex: row.sex ?? undefined,
+    homeLocation,
   };
 }
 
@@ -118,11 +145,15 @@ export function toWalk(row: any): Walk {
     status: row.status,
     startedAt: row.started_at ?? undefined,
     startedByUserId: row.started_by_user_id ?? undefined,
+    actualWalkerUserId: row.actual_walker_user_id ?? row.completed_by_user_id ?? undefined,
+    duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
     completedAt: row.completed_at ?? undefined,
     completedByUserId: row.completed_by_user_id ?? undefined,
     endedByUserId: row.ended_by_user_id ?? undefined,
     hadPee: row.had_pee ?? undefined,
     hadPoop: row.had_poop ?? undefined,
+    peeCount: typeof row.pee_count === 'number' && Number.isSafeInteger(row.pee_count) && row.pee_count >= 0 ? row.pee_count : undefined,
+    poopCount: typeof row.poop_count === 'number' && Number.isSafeInteger(row.poop_count) && row.poop_count >= 0 ? row.poop_count : undefined,
     note: row.note ?? undefined,
     durationMinutes: row.duration_minutes ?? undefined,
     isUnplanned: row.is_unplanned ?? undefined,
@@ -156,11 +187,16 @@ function fromWalk(walk: Walk) {
     status: walk.status,
     started_at: walk.startedAt ?? null,
     started_by_user_id: walk.startedByUserId ?? null,
+    // duplicate_resolution_group_id is server-owned: only the audited
+    // resolve_duplicate_active_walks_v12 RPC may set it (a trigger rejects
+    // any other change). Never echo it from a possibly stale local copy.
     completed_at: walk.completedAt ?? null,
     completed_by_user_id: walk.completedByUserId ?? null,
     ended_by_user_id: walk.endedByUserId ?? null,
     had_pee: walk.hadPee ?? null,
     had_poop: walk.hadPoop ?? null,
+    pee_count: walk.peeCount ?? null,
+    poop_count: walk.poopCount ?? null,
     note: walk.note ?? null,
     duration_minutes: walk.durationMinutes ?? null,
     is_unplanned: walk.isUnplanned ?? false,
@@ -248,6 +284,7 @@ function toGpsSession(row: any): WalkGpsSession {
     distanceMeters: row.distance_meters ?? undefined,
     pointCount: row.point_count,
     routePoints: Array.isArray(row.route_points) ? row.route_points : undefined,
+    reconstruction: row.reconstruction && typeof row.reconstruction === 'object' ? row.reconstruction : undefined,
     correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
     correctedByUserId: row.corrected_by_user_id ?? undefined,
     startedAt: row.started_at ?? undefined,
@@ -268,6 +305,7 @@ function fromGpsSession(session: WalkGpsSession) {
     distance_meters: session.distanceMeters ?? null,
     point_count: session.pointCount,
     route_points: session.routePoints ?? null,
+    reconstruction: session.reconstruction ?? null,
     corrected_distance_meters: session.correctedDistanceMeters ?? null,
     corrected_by_user_id: session.correctedByUserId ?? null,
     started_at: session.startedAt ?? null,
@@ -311,6 +349,11 @@ function fromDog(dog: Dog) {
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
     sex: dog.sex ?? null,
+    home_latitude: dog.homeLocation?.latitude ?? null,
+    home_longitude: dog.homeLocation?.longitude ?? null,
+    home_accuracy_meters: dog.homeLocation?.accuracyMeters ?? null,
+    home_verified_at: dog.homeLocation?.verifiedAt ?? null,
+    home_verified_by_user_id: dog.homeLocation?.verifiedByUserId ?? null,
   };
 }
 
@@ -320,8 +363,35 @@ function fromDog(dog: Dog) {
  * (and never should) pass an arbitrary family_id from the client as a
  * security boundary; it's used for display/filtering only.
  */
+/** Later of two ISO timestamps (either may be missing). */
+function latestIso(a: string | null | undefined, b: string | null | undefined): string | undefined {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta)) return Number.isNaN(tb) ? undefined : b ?? undefined;
+  if (Number.isNaN(tb)) return a ?? undefined;
+  return ta >= tb ? a ?? undefined : b ?? undefined;
+}
+
 export class SupabaseRepository implements Repository {
   constructor(private client: SupabaseClient) {}
+
+  /** Verify the current bearer session and its claimed profile/family at the server. */
+  async getSyncReplayIdentity(): Promise<{ authUserId: string; profileId: string; familyId: string }> {
+    const { data: authData, error: authError } = await this.client.auth.getUser();
+    if (authError) throw authError;
+    const authUserId = authData.user?.id;
+    if (!authUserId) throw new Error('Sync identity verification failed: authenticated user is unavailable');
+
+    const { data, error } = await this.client.rpc('whoami');
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    const profileId = row?.real_profile_id;
+    const familyId = row?.family_id;
+    if (!row || row.is_impersonating || typeof profileId !== 'string' || typeof familyId !== 'string') {
+      throw new Error('Sync identity verification failed: server has no unambiguous active profile and family');
+    }
+    return { authUserId, profileId, familyId };
+  }
 
   async getFamily(familyId: string): Promise<Family | undefined> {
     const { data, error } = await this.client.from('families').select('*').eq('id', familyId).maybeSingle();
@@ -332,6 +402,7 @@ export class SupabaseRepository implements Repository {
           name: data.name,
           inviteCode: data.invite_code ?? undefined,
           timezone: data.timezone ?? undefined,
+          spontaneousAssociationWindowMinutes: data.spontaneous_association_window_minutes ?? undefined,
           createdAt: data.created_at,
         }
       : undefined;
@@ -392,15 +463,57 @@ export class SupabaseRepository implements Repository {
    * `createUser`'s own documented behavior).
    */
   async upsertUser(user: FamilyUser): Promise<void> {
+    // COLUMN-PRIVILEGE CORRECTION (field report 2026-11-06: a member profile
+    // photo could not be saved — "לא הצלחנו להחליף תמונה"; the Storage upload
+    // actually SUCCEEDED, but persisting photo_url failed). Migration 0016
+    // deliberately revoked table-wide UPDATE on public.users from
+    // `authenticated` and re-granted it only per-column on the editable
+    // profile columns (name, avatar, photo_url, color, reminders_enabled,
+    // removed_at; gamification_enabled via 0052) — id/family_id/role/pin_hash/
+    // auth_user_id are intentionally NOT updatable by the client. Postgres
+    // rejects the ENTIRE update (42501 "permission denied for table users")
+    // when the SET list names any column the role can't update, and
+    // `fromUser()` includes `id` and `family_id`. They never change for an
+    // existing member (id is the WHERE key; family_id is immutable here), so
+    // omit them from the UPDATE SET — the update then touches only granted
+    // columns and the RLS UPDATE policy (self-or-admin, active) still gates
+    // it. INSERT still uses the full row (its own per-column INSERT grants and
+    // admin-only policy apply, exactly as before). Dog photos were unaffected
+    // because `dogs` keeps a table-wide grant.
+    const { id: _id, family_id: _familyId, ...updatable } = fromUser(user);
     const { data, error } = await this.client
       .from('users')
-      .update(fromUser(user))
+      .update(updatable)
       .eq('id', user.id)
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) {
       const { error: insertError } = await this.client.from('users').insert(fromUser(user));
       if (insertError) throw insertError;
+    }
+  }
+
+  /**
+   * Strictly update an existing profile for a photo change. Unlike the
+   * backward-compatible queue replay path above, a missing/hidden row must
+   * never fall through to INSERT: the caller uploaded an object for this
+   * existing profile and needs an explicit server confirmation before the
+   * UI can claim success.
+   */
+  async updateUserProfile(user: FamilyUser): Promise<void> {
+    // Same column-privilege rule as upsertUser: id/family_id are not
+    // client-updatable (migration 0016), so naming them fails the whole
+    // UPDATE with 42501 (field report 2026-11-10: the photo uploaded but the
+    // profile never saved).
+    const { id: _id, family_id: _familyId, ...updatable } = fromUser(user);
+    const { data, error } = await this.client
+      .from('users')
+      .update(updatable)
+      .eq('id', user.id)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Profile update was not confirmed: profile is missing or the caller lacks permission');
     }
   }
 
@@ -435,6 +548,11 @@ export class SupabaseRepository implements Repository {
 
   async updateUserReminderSetting(userId: string, enabled: boolean): Promise<void> {
     const { error } = await this.client.from('users').update({ reminders_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
+  async updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ chat_notifications_enabled: enabled }).eq('id', userId);
     if (error) throw error;
   }
 
@@ -489,13 +607,42 @@ export class SupabaseRepository implements Repository {
   async deleteHealthTask(taskId: string): Promise<void> {
     const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
     if (error) throw error;
-    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
+    if ((data ?? []).length === 1) return;
+    // Zero rows deleted. Retry-safe: if a previous attempt's response was lost
+    // after the server already deleted the row, the row is gone and the
+    // delete is confirmed. If the row is still visible, RLS refused it
+    // (other family / completed) — report that, never pretend success.
+    const { data: remaining, error: checkError } = await this.client.from('health_tasks').select('id').eq('id', taskId).maybeSingle();
+    if (checkError) throw checkError;
+    if (!remaining) return;
+    throw new Error('Open health task was not deleted or is no longer authorized');
   }
 
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
     if (error) throw error;
-    return data ? toGpsSession(data) : undefined;
+    const { data: ownerRow, error: ownerError } = await this.client.from('walk_gps_ownership').select('distance_meters,point_count,route_started_at,route_ended_at').eq('walk_id', walkId).maybeSingle();
+    // A server without the v1.1 schema has no fenced GPS data at all; that is
+    // "no v1.1 owner", not a read failure that should hide the legacy session.
+    if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
+    const owner = ownerError ? null : ownerRow;
+    if (!data && !owner) return undefined;
+    const session = data ? toGpsSession(data) : {
+      id: walkId, walkId, familyId: '', dogId: '', pointCount: 0, source: 'device_gps' as const, createdAt: '', updatedAt: '',
+    };
+    if (!owner) return session;
+    const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11').select('latitude,longitude,point_timestamp_ms').eq('walk_id', walkId).order('point_timestamp_ms', { ascending: true });
+    if (pointsError) throw pointsError;
+    return {
+      ...session,
+      distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
+      pointCount: Number(owner.point_count ?? 0),
+      startedAt: owner.route_started_at ?? session.startedAt,
+      endedAt: owner.route_ended_at ?? session.endedAt,
+      // Once v1.1 owns this walk's session, render only fenced v1.1 points;
+      // a legacy direct session upsert cannot inject coordinates into it.
+      routePoints: (points ?? []).map((point: any) => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) })),
+    };
   }
 
   async upsertGpsSession(session: WalkGpsSession): Promise<void> {
@@ -511,7 +658,61 @@ export class SupabaseRepository implements Repository {
     if (walkIds.length === 0) return [];
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
     if (error) throw error;
-    return (data ?? []).map(toGpsSession);
+    const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
+    const { data: ownerRows, error: ownerError } = await this.client.from('walk_gps_ownership')
+      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at,updated_at').in('walk_id', walkIds);
+    // Pre-v1.1 server: return the legacy sessions instead of failing the whole
+    // read (which made History/Statistics silently fall back to device-only data).
+    if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
+    const owners = ownerError ? null : ownerRows;
+    if (!owners?.length) return [...sessions.values()];
+    const ownerIds = owners.map((owner: any) => owner.walk_id);
+    // Read every page: the API returns at most 1000 rows per request, and a
+    // cut-off route would end the walk early (wrong map, wrong estimated
+    // leg home in Statistics).
+    const points: any[] = [];
+    for (let from = 0; ; from += ROUTE_SAMPLE_PAGE_SIZE) {
+      const { data: page, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
+        .select('walk_id,latitude,longitude,point_timestamp_ms').in('walk_id', ownerIds)
+        .order('walk_id', { ascending: true }).order('point_timestamp_ms', { ascending: true })
+        .range(from, from + ROUTE_SAMPLE_PAGE_SIZE - 1);
+      if (pointsError) throw pointsError;
+      points.push(...(page ?? []));
+      if (!page || page.length < ROUTE_SAMPLE_PAGE_SIZE) break;
+    }
+    const pointsByWalk = new Map<string, Array<{ latitude: number; longitude: number; timestamp: number }>>();
+    for (const point of points ?? []) {
+      const route = pointsByWalk.get(point.walk_id) ?? [];
+      route.push({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) });
+      pointsByWalk.set(point.walk_id, route);
+    }
+    for (const owner of owners) {
+      const existing = sessions.get(owner.walk_id);
+      sessions.set(owner.walk_id, {
+        id: existing?.id ?? owner.walk_id,
+        walkId: owner.walk_id,
+        familyId: existing?.familyId ?? owner.family_id,
+        dogId: existing?.dogId ?? owner.dog_id,
+        distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
+        pointCount: Number(owner.point_count ?? 0),
+        routePoints: pointsByWalk.get(owner.walk_id) ?? [],
+        startedAt: owner.route_started_at ?? existing?.startedAt,
+        endedAt: owner.route_ended_at ?? existing?.endedAt,
+        correctedDistanceMeters: existing?.correctedDistanceMeters,
+        correctedByUserId: existing?.correctedByUserId,
+        reconstruction: existing?.reconstruction,
+        source: existing?.source ?? 'device_gps',
+        createdByUserId: existing?.createdByUserId,
+        createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
+        updatedAt: existing?.updatedAt ?? owner.route_ended_at ?? owner.route_started_at ?? '',
+        // The walker's device heartbeats this row every ~15s while it holds
+        // the GPS lease, even when the dog stands still and no new point is
+        // written; family devices use it to tell live tracking from a
+        // session that stopped when the walker's phone locked.
+        liveUpdatedAt: latestIso(owner.updated_at, existing?.updatedAt),
+      });
+    }
+    return [...sessions.values()];
   }
 
   async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
@@ -681,6 +882,135 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map(toWalk);
   }
 
+  /** Read one walk directly from the authenticated server; RLS is authoritative. */
+  async getWalkAuthoritative(familyId: string, walkId: string): Promise<Walk | undefined> {
+    const { data, error } = await this.client.from('walks').select('*').eq('id', walkId).eq('family_id', familyId).maybeSingle();
+    if (error) throw error;
+    return data ? toWalk(data) : undefined;
+  }
+
+  async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
+    const { data, error } = await this.client.from('walk_duplicate_resolution_groups')
+      .select('id,created_at,created_by_user_id,dog_id,canonical_walk_id,rationale,walk_duplicate_resolution_items(walk_id,disposition,original_walk,linked_gps_session_ids)')
+      .eq('family_id', familyId).order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((group: any) => ({
+      id: group.id,
+      createdAt: group.created_at,
+      createdByUserId: group.created_by_user_id,
+      dogId: group.dog_id,
+      canonicalWalkId: group.canonical_walk_id ?? null,
+      rationale: group.rationale,
+      items: (group.walk_duplicate_resolution_items ?? []).map((item: any) => ({
+        walkId: item.walk_id,
+        disposition: item.disposition,
+        originalWalk: item.original_walk,
+        linkedGpsSessionIds: item.linked_gps_session_ids ?? [],
+      })),
+    }));
+  }
+
+  async getDuplicateActiveWalkReview(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]> {
+    let walkQuery = this.client.from('walks')
+      // Keep this compatible with v12-only Staging: actual_walker_user_id is
+      // introduced by v1.1, which must wait until duplicate review succeeds.
+      .select('id,family_id,dog_id,schedule_entry_id,is_unplanned,status,created_at,started_at,started_by_user_id,responsible_user_id,duplicate_resolution_group_id')
+      .eq('family_id', familyId);
+    walkQuery = walkIds.length > 0
+      ? walkQuery.in('id', walkIds)
+      : walkQuery.eq('status', 'in_progress');
+    const { data: walks, error: walkError } = await walkQuery;
+    if (walkError) throw walkError;
+    const rows = walks ?? [];
+    if (rows.length === 0) return [];
+    const returnedWalkIds = rows.map((row: any) => row.id);
+    const { data: sessions, error: sessionError } = await this.client.from('walk_gps_sessions')
+      .select('id,walk_id,point_count,distance_meters,started_at,ended_at,created_by_user_id')
+      .eq('family_id', familyId).in('walk_id', returnedWalkIds);
+    if (sessionError) throw sessionError;
+    // Since migration 20261102140000 the activity log is System Admin only;
+    // RLS now returns no rows (or a privilege error) here, and the review
+    // simply shows no audit trail instead of failing.
+    const { data: auditRows, error: auditError } = await this.client.from('audit_log')
+      .select('id,target_id,action,actor_user_id,created_at,metadata')
+      .eq('family_id', familyId).eq('target_type', 'walk')
+      .order('created_at', { ascending: true }).in('target_id', returnedWalkIds);
+    if (auditError) console.warn('[getDuplicateActiveWalkReview] audit trail unavailable', auditError.message);
+    const sessionsByWalk = new Map<string, DuplicateActiveWalkReviewRecord['gpsSessions']>();
+    for (const session of sessions ?? []) {
+      const list = sessionsByWalk.get(session.walk_id) ?? [];
+      list.push({
+        id: session.id,
+        pointCount: Number(session.point_count ?? 0),
+        distanceMeters: session.distance_meters == null ? undefined : Number(session.distance_meters),
+        startedAt: session.started_at ?? undefined,
+        endedAt: session.ended_at ?? undefined,
+        createdByUserId: session.created_by_user_id ?? undefined,
+      });
+      sessionsByWalk.set(session.walk_id, list);
+    }
+    const auditByWalk = new Map<string, DuplicateActiveWalkReviewRecord['auditEntries']>();
+    for (const event of auditRows ?? []) {
+      if (typeof event.target_id !== 'string' || typeof event.id !== 'string' || typeof event.created_at !== 'string') continue;
+      const list = auditByWalk.get(event.target_id) ?? [];
+      list.push({
+        id: event.id,
+        action: event.action,
+        actorUserId: event.actor_user_id ?? undefined,
+        createdAt: event.created_at,
+        metadata: event.metadata && typeof event.metadata === 'object' ? event.metadata : {},
+      });
+      auditByWalk.set(event.target_id, list);
+    }
+    const rowsById = new Map<string, any>(rows.map((row: any) => [row.id, row]));
+    const requestedIds = walkIds.length > 0 ? walkIds : rows.map((row: any) => row.id);
+    return requestedIds.flatMap((walkId) => {
+      const row = rowsById.get(walkId);
+      return row ? [{
+        walkId: row.id,
+        familyId: row.family_id,
+        dogId: row.dog_id,
+        scheduleEntryId: row.schedule_entry_id ?? undefined,
+        isUnplanned: row.is_unplanned ?? undefined,
+        status: row.status,
+        createdAt: row.created_at ?? undefined,
+        startedAt: row.started_at ?? undefined,
+        startedByUserId: row.started_by_user_id ?? undefined,
+        // The actual-walker field is intentionally absent from the read
+        // until v1.1 is installed; show the persisted actor/assignee instead.
+        actualWalkerUserId: undefined,
+        responsibleUserId: row.responsible_user_id,
+        duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
+        auditEntries: auditByWalk.get(row.id) ?? [],
+        gpsSessions: sessionsByWalk.get(row.id) ?? [],
+      }] : [];
+    });
+  }
+
+  async resolveDuplicateActiveWalksV12(request: ResolveDuplicateActiveWalksRequest): Promise<string> {
+    const { data, error } = await this.client.rpc('resolve_duplicate_active_walks_v12', {
+      p_walk_ids: request.walkIds,
+      p_canonical_walk_id: request.canonicalWalkId,
+      p_rationale: request.rationale,
+      p_operation_id: request.operationId,
+    });
+    if (error) throw error;
+    if (typeof data !== 'string' || !data) throw new Error('Duplicate resolution RPC returned an invalid audit group id');
+    return data;
+  }
+
+  async getWalkLifecycleCapability(): Promise<WalkLifecycleCapability> {
+    const { data, error } = await this.client.rpc('walk_lifecycle_server_capabilities');
+    if (error) {
+      // The probe itself is part of the v1.1 rollout: its absence means the
+      // server has not been activated for v1.1. Anything else (network,
+      // auth) is not an answer and must not be cached as one.
+      if (isMissingFunctionError(error)) return { status: 'not_installed', checkedAt: new Date().toISOString() };
+      throw error;
+    }
+    return capabilityFromProbe(data);
+  }
+
   /**
    * Handles the "two people mark done at once" race atomically: the update
    * is conditioned on the row still being 'pending' server-side, so whichever
@@ -690,6 +1020,49 @@ export class SupabaseRepository implements Repository {
   async startWalk(walkId: string): Promise<Walk> {
     const { data, error } = await this.client.rpc('start_walk', { target_walk_id: walkId });
     if (error) throw error;
+    return toWalk(data);
+  }
+
+  private async dispatchWalkLifecycleNotification(walkId: string): Promise<void> {
+    if (!this.client.functions?.invoke) return;
+    try {
+      const { data, error } = await this.client.functions.invoke('send-walk-lifecycle-notification', { body: { walkId } });
+      if (error || !data?.providerAccepted) {
+        // Lifecycle success is independent from push delivery. The outbox
+        // records a failed/pending send; never report delivery as successful.
+        console.warn('[walkLifecycle] notification was not provider-confirmed', { walkId, reason: error?.message ?? data?.reason });
+      }
+    } catch (error) {
+      console.warn('[walkLifecycle] notification dispatch failed', { walkId, error });
+    }
+  }
+
+  async startWalkV11(walkId: string, authorization: WalkStartAuthorization): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_walk_v11', {
+      p_walk_id: walkId,
+      p_expected_actor_id: authorization.actorUserId ?? authorization.actualWalkerUserId,
+      p_actual_walker_id: authorization.actualWalkerUserId,
+      p_operation_id: authorization.operationId,
+      p_substitution_confirmed: authorization.substitutionConfirmed ?? false,
+      p_remote_start: authorization.remoteStart ?? false,
+    });
+    if (error) throw lifecycleRpcError('start_walk_v11', error);
+    const walk = toWalk(data);
+    if (authorization.remoteStart) await this.dispatchWalkLifecycleNotification(walk.id);
+    return walk;
+  }
+
+  async startSpontaneousWalkV11(walk: Walk, operationId: string, actorUserId = walk.responsibleUserId): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_spontaneous_walk_v11', {
+      p_walk_id: walk.id,
+      p_family_id: walk.familyId,
+      p_dog_id: walk.dogId,
+      p_date: walk.date,
+      p_scheduled_time: walk.scheduledTime,
+      p_expected_actor_id: actorUserId,
+      p_operation_id: operationId,
+    });
+    if (error) throw lifecycleRpcError('start_spontaneous_walk_v11', error);
     return toWalk(data);
   }
 
@@ -704,6 +1077,126 @@ export class SupabaseRepository implements Repository {
     });
     if (error) throw error;
     return toWalk(data);
+  }
+
+  async finishWalkV11(walkId: string, actualWalkerId: string, operationId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string } = {}): Promise<Walk> {
+    const { data, error } = await this.client.rpc('finish_walk_v11', {
+      p_walk_id: walkId,
+      p_expected_actor_id: details.actorUserId ?? actualWalkerId,
+      p_actual_walker_id: actualWalkerId,
+      p_operation_id: operationId,
+      p_had_pee: details.hadPee ?? null,
+      p_had_poop: details.hadPoop ?? null,
+      p_note: details.note ?? null,
+      p_completed_at: details.completedAt ?? null,
+      p_remote_confirmation: details.remoteConfirmation ?? false,
+    });
+    if (error) throw lifecycleRpcError('finish_walk_v11', error);
+    const walk = toWalk(data);
+    if (details.remoteConfirmation) await this.dispatchWalkLifecycleNotification(walk.id);
+    return walk;
+  }
+
+  async finishWalkV12(walkId: string, actualWalkerId: string, operationId: string, details: { hadPee?: boolean; hadPoop?: boolean; peeCount?: number; poopCount?: number; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string } = {}): Promise<Walk> {
+    const { data, error } = await this.client.rpc('finish_walk_v12', {
+      p_walk_id: walkId,
+      p_expected_actor_id: details.actorUserId ?? actualWalkerId,
+      p_actual_walker_id: actualWalkerId,
+      p_operation_id: operationId,
+      p_had_pee: details.hadPee ?? null,
+      p_had_poop: details.hadPoop ?? null,
+      p_note: details.note ?? null,
+      p_completed_at: details.completedAt ?? null,
+      p_remote_confirmation: details.remoteConfirmation ?? false,
+      p_pee_count: details.peeCount ?? null,
+      p_poop_count: details.poopCount ?? null,
+    });
+    if (error) throw lifecycleRpcError('finish_walk_v12', error);
+    const walk = toWalk(data);
+    if (details.remoteConfirmation) await this.dispatchWalkLifecycleNotification(walk.id);
+    return walk;
+  }
+
+  async acquireGpsOwnershipV11(walkId: string, confirmTransfer = false): Promise<{ fencingEpoch: number; expiresAt: string }> {
+    const { data, error } = await this.client.rpc('acquire_walk_gps_ownership_v11', { p_walk_id: walkId, p_confirm_transfer: confirmTransfer });
+    if (error) throw lifecycleRpcError('acquire_walk_gps_ownership_v11', error);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row.fencing_epoch !== 'number' || typeof row.expires_at !== 'string') throw new Error('GPS ownership response was invalid');
+    return { fencingEpoch: row.fencing_epoch, expiresAt: row.expires_at };
+  }
+
+  async heartbeatGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<string> {
+    const { data, error } = await this.client.rpc('heartbeat_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
+    if (error) throw lifecycleRpcError('heartbeat_walk_gps_ownership_v11', error);
+    if (typeof data !== 'string') throw new Error('GPS ownership heartbeat response was invalid');
+    return data;
+  }
+
+  async recordWalkEventCountsV1(walkId: string, counts: { pee: number; poop: number }): Promise<void> {
+    const { error } = await this.client.rpc('record_walk_event_counts_v1', { p_walk_id: walkId, p_pee_count: counts.pee, p_poop_count: counts.poop });
+    if (error) throw lifecycleRpcError('record_walk_event_counts_v1', error);
+  }
+
+  async releaseGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<void> {
+    const { error } = await this.client.rpc('release_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
+    if (error) throw lifecycleRpcError('release_walk_gps_ownership_v11', error);
+  }
+
+  async appendGpsRouteV11(update: GpsRouteUpdate): Promise<WalkGpsSession> {
+    const { data, error } = await this.client.rpc('append_walk_gps_route_v11', {
+      p_walk_id: update.walkId,
+      p_fencing_epoch: update.fencingEpoch,
+      p_points: update.points,
+      p_distance_meters: update.distanceMeters,
+      p_point_count: update.pointCount,
+      p_started_at: update.startedAt ?? null,
+      p_ended_at: update.endedAt ?? null,
+    });
+    if (error) throw lifecycleRpcError('append_walk_gps_route_v11', error);
+    return (await this.getGpsSession(update.walkId)) ?? toGpsSession(data);
+  }
+
+  async saveGpsReconstructionUpdateV1(update: GpsReconstructionUpdate): Promise<void> {
+    const { error } = await this.client.rpc('save_walk_gps_reconstruction_v1', {
+      p_walk_id: update.walkId,
+      p_reconstruction: update.reconstruction,
+    });
+    if (error && isMissingFunctionError(error)) {
+      // Preserve this estimate-only operation at the FIFO head until the
+      // separately approved additive migration is present.
+      throw Object.assign(new Error('GPS reconstruction server migration is not installed yet'), { syncQueueRetryable: true });
+    }
+    if (error) throw error;
+  }
+
+  /**
+   * Edit the detail fields of an already-resolved (done/skipped) walk, by id.
+   * Unlike saveWalk()'s done-branch — which only UPDATEs a still-'pending' row
+   * and otherwise no-ops to protect a concurrent completion — this is a
+   * deliberate correction of an existing resolved walk, so it updates that row
+   * directly. Only the editable columns are written, so the server's
+   * walk-write-authorization trigger (responsible member or admin) applies and
+   * no protected field (date/time/responsible/schedule link) is ever touched.
+   */
+  async editResolvedWalkDetails(walk: Walk): Promise<void> {
+    const { data, error, status } = await withTimeout(
+      this.client.from('walks').update({
+        had_pee: walk.hadPee ?? null,
+        had_poop: walk.hadPoop ?? null,
+        pee_count: walk.peeCount ?? null,
+        poop_count: walk.poopCount ?? null,
+        note: walk.note ?? null,
+        completed_at: walk.completedAt ?? null,
+        completed_by_user_id: walk.completedByUserId ?? null,
+        duration_minutes: walk.durationMinutes ?? null,
+      }).eq('id', walk.id).select('id'),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'walks edit resolved details',
+    );
+    if (error) throw Object.assign(error, { status });
+    // No row matched — the walk isn't on the server yet (e.g. created offline).
+    // Fall back to the full save path, which inserts it.
+    if (!data || data.length === 0) await this.saveWalk(walk);
   }
 
   async saveWalk(walk: Walk): Promise<void> {

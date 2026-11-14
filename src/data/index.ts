@@ -12,4 +12,4 @@ export const repository: Repository = new OfflineFirstRepository(
 );
 
 export type { Repository } from './repository';
-export { setSyncQueueActorGetter } from './syncQueue';
+export { setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from './syncQueue';

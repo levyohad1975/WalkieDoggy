@@ -10,7 +10,7 @@ describe('new family setup wizard contract', () => {
 
   it('requires a dog name, persists photos through the shared upload/store path and keeps the mascot fallback', () => {
     expect(wizard).toContain("if (!name) {");
-    expect(wizard).toContain('await savePrimaryDog(name, pendingDogPhotoUrl, dogSex)');
+    expect(wizard).toContain('await savePrimaryDog(name, progressRef.current.pendingDogPhotoDogId === dogIdRef.current ? pendingDogPhotoUrl : undefined, dogSex)');
     expect(wizard).toContain("pickAndUploadImage('dogs', familyId, dogIdRef.current, (uri) => setSelectedDogPhotoPreviewUrl(uri ?? undefined))");
     expect(wizard).toContain("takeAndUploadImage('dogs', familyId, dogIdRef.current)");
     expect(wizard).toContain('await saveDog(savedDog)');
@@ -34,6 +34,8 @@ describe('new family setup wizard contract', () => {
     expect(wizard).toContain('if (busyRef.current) return;');
     expect(wizard).toContain('לא הצלחנו לטעון את ההקמה');
     expect(wizard).toContain('onPress={() => void refreshData()}');
+    expect(wizard).not.toContain('אבחון Staging · לוח זמנים');
+    expect(wizard).toContain('managerProfileSaved ? <><View');
   });
 
   it('prevents duplicate family creation and persists a recovery marker before the request', () => {

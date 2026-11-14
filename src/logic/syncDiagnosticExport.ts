@@ -25,6 +25,7 @@ const ALLOWED_TYPES = new Set([
   'upsertScheduleRule', 'deleteScheduleRule', 'addScheduleEntries',
   'updateScheduleEntry', 'deleteScheduleEntry', 'saveWalk', 'deleteWalk',
   'updateUserReminderSetting', 'updateUserGamificationSetting',
+  'updateUserChatNotificationSetting',
 ]);
 
 const RELATION_KEYS: Record<string, string[]> = {
@@ -45,6 +46,7 @@ const RELATION_KEYS: Record<string, string[]> = {
   deleteWalk: ['walkId'],
   updateUserReminderSetting: ['userId'],
   updateUserGamificationSetting: ['userId'],
+  updateUserChatNotificationSetting: ['userId'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

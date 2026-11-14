@@ -14,9 +14,13 @@ jest.mock('../src/data', () => ({
 }));
 
 let mockAuthState = { familyId: 'family-1', currentUserId: 'user-a' };
+const mockAuthSetState = jest.fn();
 const mockRevalidateClaim = jest.fn().mockResolvedValue(undefined);
 jest.mock('../src/store/authStore', () => ({
-  useAuthStore: { getState: () => ({ ...mockAuthState, revalidateClaim: mockRevalidateClaim }) },
+  useAuthStore: {
+    getState: () => ({ ...mockAuthState, revalidateClaim: mockRevalidateClaim }),
+    setState: (...args: unknown[]) => mockAuthSetState(...args),
+  },
 }));
 
 const mockScheduleLoad = jest.fn();
@@ -86,6 +90,7 @@ beforeEach(() => {
   // behavior independent of what earlier tests configured on it.
   mockTrySync.mockResolvedValue(undefined);
   mockRegisterPushToken.mockResolvedValue(undefined);
+  mockAuthSetState.mockClear();
   mockAuthState = { familyId: 'family-1', currentUserId: 'user-a' };
   mockScheduleWalks = [];
   mockScheduleLoad.mockImplementation(async () => {
@@ -350,6 +355,18 @@ describe('Batch 2 review correction — native cold-start registration race', ()
 });
 
 describe('Bug 2 — performColdStart() awaits restoreSession() before syncing', () => {
+  it('releases the startup gate after rejected session restoration and skips identity-dependent sync', async () => {
+    const restoreSession = jest.fn().mockRejectedValue(new Error('storage unavailable'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(performColdStart(restoreSession)).resolves.toBeUndefined();
+
+    expect(mockAuthSetState).toHaveBeenCalledWith({ hydrated: true });
+    expect(mockTrySync).not.toHaveBeenCalled();
+    expect(mockScheduleLoad).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it('does not call mockTrySync (or anything else in runForegroundSync) until restoreSession has resolved', async () => {
     let resolveRestore!: () => void;
     const restoreSession = jest.fn(

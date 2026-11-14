@@ -1,4 +1,5 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 /**
  * Round 2: thin client wrapper over the five deployed migration-0008
@@ -248,7 +249,7 @@ export async function inspectFamilyInviteDetail(token: string): Promise<FamilyIn
  */
 export async function redeemFamilyInvite(token: string): Promise<RedeemedFamilyInvite> {
   const client = requireSupabase();
-  const { data, error } = await client.rpc('redeem_family_invite', { p_token: token });
+  const { data, error } = await withSyncIdentityFence(async () => await client.rpc('redeem_family_invite', { p_token: token }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('הצטרפות למשפחה נכשלה');

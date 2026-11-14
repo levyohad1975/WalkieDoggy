@@ -27,6 +27,9 @@ import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { appendRawDiagnostic, friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
+import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
+import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
+import { isActiveWalk } from '../logic/walkLifecycle';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in addRule()/
 // updateRule() once the real ~10s Schedule-save bottleneck is confirmed
@@ -97,7 +100,7 @@ interface ScheduleState {
   rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
   deleteEntry: (entryId: string) => Promise<void>;
 
-  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean }) => Promise<boolean>;
+  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean; allowEarlyStart?: boolean }) => Promise<boolean>;
   finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
@@ -178,6 +181,43 @@ function hasPlannedWalkForEntry(walks: Walk[], entry: ScheduleEntry, familyId: s
   );
 }
 
+/**
+ * A planned walk is generated for a schedule occurrence only when that
+ * occurrence falls at or after the moment its rule began (`rule.createdAt`).
+ *
+ * Field report 2026-11-05: setting up a weekly schedule during onboarding
+ * immediately showed a red "לא בוצע" (not done) note, because generation starts
+ * at the local "today" and today's earlier slots (e.g. 08:00, 14:00) were
+ * already in the past when the family was created that evening — so they were
+ * materialised as overdue walks for times that passed before the family
+ * existed, and polluted History as never-performed misses.
+ *
+ * Gating walk creation by the rule's activation moment fixes this at the
+ * source: an occurrence earlier than when the schedule was set up never becomes
+ * a walk. An established rule's `createdAt` is in the past, so every current and
+ * future occurrence still passes and a genuinely missed slot surfaces exactly as
+ * before. The schedule ENTRY is still generated (rotation stays deterministic);
+ * only the derived walk row is withheld. Missing/invalid `createdAt` fails open
+ * (returns true) so this can never drop a legitimate walk.
+ *
+ * Time is compared in the device-local frame, matching how this module derives
+ * `today` (localDateOnly) — the device setting up the schedule is in the
+ * family's timezone.
+ */
+export function occurrenceAtOrAfterRuleStart(
+  entry: Pick<ScheduleEntry, 'date' | 'time'>,
+  rule: Pick<ScheduleRule, 'createdAt'> | undefined,
+): boolean {
+  if (!rule?.createdAt) return true;
+  const activatedAt = Date.parse(rule.createdAt);
+  if (!Number.isFinite(activatedAt)) return true;
+  const [year, month, day] = entry.date.split('-').map(Number);
+  const [hour, minute] = entry.time.split(':').map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return true;
+  const occurrence = new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+  return occurrence >= activatedAt;
+}
+
 function walkFromEntry(entry: ScheduleEntry, familyId: string): Walk {
   const now = new Date().toISOString();
   return {
@@ -229,6 +269,23 @@ async function scheduleNotificationsForWalk(walk: Walk) {
  * still pending from its current data. Exported so App.tsx can also run it
  * on startup/foreground, independent of a full schedule reload.
  */
+
+/**
+ * Short, non-sensitive code shown with the "GPS not saved" notice so a
+ * screenshot tells support which step failed (Production 2026-11-01):
+ *   GPS-L  this device no longer held the GPS lease
+ *   GPS-N  the device reported itself offline
+ *   GPS-S  the server refused the route upload
+ *   GPS-E  anything else
+ */
+export function gpsFinalizationFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? '');
+  if (/no longer owns GPS|ownership expired or transferred/i.test(message)) return 'GPS-L';
+  if (/buffered locally|Network unavailable|offline/i.test(message)) return 'GPS-N';
+  if (/append_walk_gps_route_v11/i.test(message)) return 'GPS-S';
+  return 'GPS-E';
+}
+
 export async function reconcileScheduleNotifications(familyId: string, walks: Walk[]): Promise<void> {
   // Batch 2 / Decision 4 — see scheduleNotificationsForWalk()'s identical
   // gate just above for the full reasoning. Cancel rather than reconcile:
@@ -280,6 +337,13 @@ async function loadScheduleForFamily(
       repository.getWalks(familyId),
     ]);
 
+    // Publish the authoritative server snapshot before optional reconciliation.
+    // A slow or failed backfill must never make a successfully fetched schedule
+    // appear empty on Home and Schedule (especially on a cold PWA start).
+    // Keep loading=true until reconciliation finishes; later publish the
+    // reconciled snapshot as usual.
+    set({ rules, entries, walks, loading: true });
+
     // Recurring rules are configuration and survive an activity reset. Rebuild
     // only the FUTURE occurrence horizon when a surviving active rule has no
     // upcoming entries, so Home can still resolve "next walk" after reset.
@@ -298,6 +362,7 @@ async function loadScheduleForFamily(
       const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
       const generatedWalks = trulyNew
         .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, rule.familyId))
+        .filter((entry) => occurrenceAtOrAfterRuleStart(entry, rule))
         .map((entry) => walkFromEntry(entry, rule.familyId));
       for (const walk of generatedWalks) await repository.saveWalk(walk);
       finalEntries = [...finalEntries, ...trulyNew];
@@ -311,6 +376,12 @@ async function loadScheduleForFamily(
     // already references the canonical schedule-entry id.
     const activeRules = rules.filter((rule) => rule.active);
     const activeRuleIds = new Set(activeRules.map((rule) => rule.id));
+    const rulesById = new Map(rules.map((rule) => [rule.id, rule]));
+    // Same onboarding gate as generation: never (re)create a walk for a slot
+    // that predates its rule's activation. Legacy entries with no rule_id fall
+    // open (occurrenceAtOrAfterRuleStart returns true for an unknown rule).
+    const entryActivationOk = (entry: ScheduleEntry): boolean =>
+      occurrenceAtOrAfterRuleStart(entry, entry.ruleId ? rulesById.get(entry.ruleId) : undefined);
     const walkEntryIds = new Set(
       finalWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
     );
@@ -330,6 +401,7 @@ async function loadScheduleForFamily(
         entry.date >= today &&
         entry.date <= endDate &&
         entryBelongsToActiveRule(entry) &&
+        entryActivationOk(entry) &&
         !walkEntryIds.has(entry.id) &&
         !hasPlannedWalkForEntry(finalWalks, entry, familyId)
     );
@@ -383,6 +455,7 @@ async function loadScheduleForFamily(
       await repository.addScheduleEntries(staleReconciliation.toRegenerate);
       const regeneratedWalks = staleReconciliation.toRegenerate
         .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, familyId))
+        .filter((entry) => entryActivationOk(entry))
         .map((entry) => walkFromEntry(entry, familyId));
       const todayRegeneratedWalks = regeneratedWalks.filter((w) => w.date === today);
       const futureRegeneratedWalks = regeneratedWalks.filter((w) => w.date !== today);
@@ -424,6 +497,7 @@ async function loadScheduleForFamily(
 }
 
 const startWalkPromises = new Map<string, Promise<boolean>>();
+const finishWalkPromises = new Map<string, Promise<boolean>>();
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
   rules: [],
@@ -485,6 +559,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
       const newWalks = trulyNew
         .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, rule.familyId))
+        // Never back-fill a walk for a slot that already passed before this rule
+        // was created (onboarding "לא בוצע" fix — see occurrenceAtOrAfterRuleStart).
+        .filter((entry) => occurrenceAtOrAfterRuleStart(entry, rule))
         .map((entry) => walkFromEntry(entry, rule.familyId));
       // Real-device QA fix — "Save spinner lingers ~10s": this used to be
       // `for (const w of newWalks) await repository.saveWalk(w);` — up to
@@ -676,7 +753,20 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // round-trips bottleneck this fix targets. The OLD (locked) entry
       // and its already-resolved walk are never touched — they remain
       // exactly as they were, preserved as history.
-      const allNewEntries = [...toAdd, ...toRegenerate];
+      // Field report 2026-11-10: moving a rule from 08:00 to 07:30 at 12:55,
+      // after today's 08:00 walk was already done, regenerated a SECOND walk
+      // for today at 07:30 — a slot that had already gone by, left pending
+      // forever. Same rule as the load-time self-heal
+      // (planStaleRuleEntryReconciliation): today's resolved occurrence gets
+      // a new one only if the new time is still ahead.
+      const nowMs = Date.now();
+      const regenerate = toRegenerate.filter((entry) => {
+        if (entry.date !== today) return true;
+        const [h, m] = entry.time.split(':').map(Number);
+        const [y, mo, d] = today.split('-').map(Number);
+        return new Date(y, mo - 1, d, h, m, 0, 0).getTime() >= nowMs;
+      });
+      const allNewEntries = [...toAdd, ...regenerate];
       if (allNewEntries.length > 0) await repository.addScheduleEntries(allNewEntries);
       const newWalks = allNewEntries
         .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, updatedRule.familyId))
@@ -881,7 +971,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }));
   },
 
-  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean } = {}) => {
+  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean; allowEarlyStart?: boolean } = {}) => {
     const inFlight = startWalkPromises.get(walkId);
     if (inFlight) return inFlight;
     set((s) => ({ startingWalkIds: s.startingWalkIds.includes(walkId) ? s.startingWalkIds : [...s.startingWalkIds, walkId] }));
@@ -892,7 +982,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // Defense in depth: the Home button is disabled before this point, but
     // no other caller may start a planned walk more than 30 minutes early.
     // Unplanned/spontaneous walks are intentionally exempt.
-    if (!options.remoteActivation && !walk.isUnplanned && walk.status === 'pending') {
+    // A spontaneous walk the user chose to associate with a scheduled slot is
+    // a deliberate "do this slot now", so it bypasses the early-start window
+    // (the association offer window is wider than 30 min). The server imposes
+    // no early-start gate; this is a client-only guard.
+    if (!options.remoteActivation && !options.allowEarlyStart && !walk.isUnplanned && walk.status === 'pending') {
       const scheduledAt = new Date(`${walk.date}T${walk.scheduledTime}:00`).getTime();
       const unlockAt = scheduledAt - 30 * 60 * 1000;
       if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
@@ -936,7 +1030,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         return false;
       }
       let updated: Walk;
-      if (repository.startWalk) updated = await repository.startWalk(walkId);
+      const actualWalkerUserId = options.actualWalkerUserId ?? walk.actualWalkerUserId ?? walk.responsibleUserId;
+      if (repository.startWalkV11) {
+        const actorUserId = options.actorUserId ?? actualWalkerUserId;
+        const operationId = await getWalkLifecycleOperationId('start', walkId, actorUserId);
+        updated = await repository.startWalkV11(walkId, { actorUserId, actualWalkerUserId, operationId, substitutionConfirmed: options.substitutionConfirmed, remoteStart: options.remoteStart });
+        await completeWalkLifecycleOperation('start', walkId, actorUserId);
+      } else if (repository.startWalk) updated = await repository.startWalk(walkId);
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       // Some remote activation/start responses omit started_at even when the
       // transition succeeded. Keep the active card timer moving from the
@@ -944,7 +1044,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       if (updated.status === 'in_progress' && !updated.startedAt) {
         updated = { ...updated, startedAt: new Date().toISOString() };
       }
-      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      set((s) => {
+        const walks: Walk[] = [];
+        let inserted = false;
+        for (const current of s.walks) {
+          if (current.id !== walkId && current.id !== updated.id) { walks.push(current); continue; }
+          if (!inserted) { walks.push(updated); inserted = true; }
+        }
+        if (!inserted) walks.push(updated);
+        return { walks, actionError: null };
+      });
       // Home starts the foreground GPS watch in the original tap handler,
       // before this server-authoritative RPC. OfflineFirstRepository may
       // resolve that local occurrence to an existing canonical server walk
@@ -964,6 +1073,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // itself (permission denial/unavailability must never fail or delay
       // Start). See gpsStore.startTracking's own doc comment.
       if (options.startGps !== false) void useGpsStore.getState().startTracking(updated);
+      if (useGpsStore.getState().trackingWalkId === updated.id) void useGpsStore.getState().attachGpsOwnership(updated);
       return true;
     } catch (e) {
       // TEMPORARY P0 DIAGNOSTIC — real-device QA: "Start" failed on a real
@@ -994,33 +1104,90 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     return tracked;
   },
 
-  finishWalk: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
-    if (!guardTestModeMutation()) return false;
-    const walk = get().walks.find((w) => w.id === walkId);
-    if (!walk) return false;
-    try {
-      let updated: Walk;
-      if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
-      else updated = markWalkDone(walk, completedByUserId, details);
-      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
-      // Notification cleanup is secondary; it must never skip the GPS
-      // finalization after the server has already completed the walk.
-      void cancelWalkNotifications(walkId).catch((error) => {
-        console.warn('[finishWalk] notification cleanup failed', { walkId, error });
-      });
-      // Stop and persist the captured route before returning success. The
-      // repository writes locally first and queues remote retries offline.
+  finishWalk: (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
+    // A second tap (or a remote-confirmation retry) while a finish is still
+    // in flight joins the same attempt instead of racing it: one GPS final
+    // upload, one lease release, one finish_walk_v11 call per operation id.
+    const inFlight = finishWalkPromises.get(walkId);
+    if (inFlight) return inFlight;
+    const operation = (async () => {
+      if (!guardTestModeMutation()) return false;
+      const walk = get().walks.find((w) => w.id === walkId);
+      if (!walk) return false;
       try {
-        await useGpsStore.getState().stopTracking(updated, completedByUserId);
-      } catch (error) {
-        console.error('[finishWalk] GPS session persistence failed', { walkId, error });
-        set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+        // Version gate first: on a server without Walk Lifecycle v1.1 the
+        // finish cannot succeed, so the live GPS route must stay untouched in
+        // memory rather than being half-finalized into an "interrupted" state.
+        if (repository.finishWalkV12 || repository.finishWalkV11) await repository.assertWalkLifecycleV11Available?.();
+        // With GPS fencing enabled, upload the final route while the lease is
+        // still valid. The server finish RPC closes the lease in the same
+        // transaction after this final route write.
+        let gpsFinalizedBeforeFinish = false;
+        let gpsFinalizationFailed = false;
+        let gpsFinalizationCode = 'GPS-E';
+        if ((repository.finishWalkV12 || repository.finishWalkV11) && useGpsStore.getState().trackingWalkId === walkId) {
+          gpsFinalizedBeforeFinish = true;
+          try {
+            // A lease that lapsed while the phone was locked (or after a lost
+            // heartbeat) is renewed on this same device first. The server
+            // refuses that without confirmation if another device owns GPS.
+            const gps = useGpsStore.getState();
+            if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
+            await useGpsStore.getState().stopTracking(walk, completedByUserId, 'walk_finished');
+          } catch (error) {
+            // GPS is assistive, never a precondition for the walk lifecycle.
+            // The route already persisted under the lease stays saved; the
+            // unsaved tail stays in memory, and the walk is still finished
+            // (online or through the offline lifecycle outbox).
+            gpsFinalizationFailed = true;
+            gpsFinalizationCode = gpsFinalizationFailureCode(error);
+            recordGpsLifecycle('finalize_failed', walkId, gpsFinalizationCode);
+            console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
+          }
+        }
+        let updated: Walk;
+        if (repository.finishWalkV12) {
+          const actorUserId = details.actorUserId ?? completedByUserId;
+          const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
+          updated = await repository.finishWalkV12(walkId, completedByUserId, operationId, { ...details, actorUserId });
+          await completeWalkLifecycleOperation('finish', walkId, actorUserId);
+        } else if (repository.finishWalkV11) {
+          const actorUserId = details.actorUserId ?? completedByUserId;
+          const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
+          updated = await repository.finishWalkV11(walkId, completedByUserId, operationId, { ...details, actorUserId });
+          await completeWalkLifecycleOperation('finish', walkId, actorUserId);
+        } else if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
+        else updated = markWalkDone(walk, completedByUserId, details);
+        set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+        if (gpsFinalizationFailed) {
+          set({ actionError: `הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת. (קוד: ${gpsFinalizationCode})` });
+        }
+        // Notification cleanup is secondary; it must never skip the GPS
+        // finalization after the server has already completed the walk.
+        void cancelWalkNotifications(walkId).catch((error) => {
+          console.warn('[finishWalk] notification cleanup failed', { walkId, error });
+        });
+        // Stop and persist the captured route before returning success. The
+        // repository writes locally first and queues remote retries offline.
+        if (!gpsFinalizedBeforeFinish) {
+          try {
+            await useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_finished');
+          } catch (error) {
+            console.error('[finishWalk] GPS session persistence failed', { walkId, error });
+            set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+          }
+        }
+        return true;
+      } catch (e) {
+        set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
+        return false;
       }
-      return true;
-    } catch (e) {
-      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
-      return false;
-    }
+    })();
+    const tracked = operation.finally(() => {
+      finishWalkPromises.delete(walkId);
+    });
+    finishWalkPromises.set(walkId, tracked);
+    return tracked;
   },
 
   markDone: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
@@ -1038,7 +1205,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // (a no-op if this walk was never being tracked, e.g. it was marked
       // done without ever being started) so a GPS watch started via
       // startWalk can never keep running past a walk that's already done.
-      void useGpsStore.getState().stopTracking(updated, completedByUserId);
+      void useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_marked_done');
 
       // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
       // remote write ultimately failed — it always writes locally first
@@ -1096,7 +1263,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     try {
       const updated = editWalkDetails(walk, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
-      await repository.saveWalk(updated);
+      // Editing an ALREADY-resolved walk must update that row directly —
+      // saveWalk()'s done-branch only matches a still-'pending' row and
+      // silently no-ops otherwise, which is why edits from History / the
+      // Home last-walk card never persisted (field report 2026-11-05).
+      if (repository.editResolvedWalkDetails) await repository.editResolvedWalkDetails(updated);
+      else await repository.saveWalk(updated);
     } catch (e) {
       set({ actionError: e instanceof WalkActionError ? e.message : 'לא הצלחנו לעדכן את פרטי הטיול' });
     }
@@ -1106,6 +1278,15 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return;
+    if (walk.status !== 'pending') {
+      // The ✕ "לא בוצע" affordance is only offered for a pending overdue walk, so a
+      // non-pending walk here means it was already resolved (completed or skipped
+      // on another device) between render and tap. Treat as a quiet no-op — the
+      // caller refreshes and shows the real status — rather than raising the
+      // confusing "אפשר לדלג רק על טיול שממתין" error.
+      set({ actionError: null });
+      return;
+    }
     try {
       const updated = markWalkSkipped(walk);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
@@ -1240,6 +1421,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // A second tap can arrive before the first async save has created its
     // in-progress row. Keep this client-side guard until the action settles.
     if (get().isStartingUnplannedWalk) return false;
+    if (get().walks.some((walk) => walk.familyId === familyId && walk.dogId === dogId && isActiveWalk(walk))) {
+      set({ actionError: 'כבר יש טיול פעיל לכלב הזה. סיימו אותו לפני שמתחילים טיול נוסף.' });
+      return false;
+    }
     set({ isStartingUnplannedWalk: true });
     try {
       const now = new Date().toISOString();
@@ -1264,10 +1449,24 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // so Safari can honor its gesture-bound geolocation permission flow.
       // GPS is provisional until the authoritative walk start succeeds.
       void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+      if (repository.startSpontaneousWalkV11) {
+        try {
+          const operationId = await getWalkLifecycleOperationId('start_spontaneous', walk.id, userId);
+          const started = await repository.startSpontaneousWalkV11(walk, operationId, userId);
+          await completeWalkLifecycleOperation('start_spontaneous', walk.id, userId);
+          set((s) => ({ walks: [...s.walks.filter((item) => item.id !== walk.id), started], actionError: null }));
+          void useGpsStore.getState().attachGpsOwnership(started);
+          return true;
+        } catch (e) {
+          useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+          set((s) => ({ walks: s.walks.filter((item) => item.id !== walk.id), actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.') }));
+          return false;
+        }
+      }
       try {
         await repository.saveWalk(walk);
       } catch (e) {
-        useGpsStore.getState().cancelTracking(walk.id);
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
         return false;
       }
@@ -1286,7 +1485,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           // Already-surfaced actionError from startWalk() above stands.
         }
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
-        useGpsStore.getState().cancelTracking(walk.id);
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
       }
       return started;
     } finally {

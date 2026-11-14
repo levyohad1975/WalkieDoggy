@@ -8,6 +8,7 @@ import { Button } from './Button';
 import { Avatar } from './Avatar';
 import { TimePickerField } from './TimePickerField';
 import { pickerDateToTime } from '../logic/timeInput';
+import { getWalkEventCounts } from '../logic/walkEventCounts';
 import { useGpsStore } from '../store/gpsStore';
 import { formatDistanceMeters } from '../logic/gpsDistance';
 import { RoutePreview } from './RoutePreview';
@@ -16,7 +17,7 @@ import { ConfirmModal } from './ConfirmModal';
 interface EditDoneDetailsModalProps {
   visible: boolean;
   walk: Walk | null;
-  onSave: (details: { hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string; completedByUserId?: string }) => void;
+  onSave: (details: { hadPee: boolean; hadPoop: boolean; peeCount: number; poopCount: number; note: string; completedAt?: string; completedByUserId?: string }) => void;
   onClose: () => void;
   /**
    * Final QA round v2 (item D completion): both new, OPT-IN, and
@@ -50,8 +51,10 @@ export function EditDoneDetailsModal({
   onDelete,
   currentUserId,
 }: EditDoneDetailsModalProps) {
-  const [hadPee, setHadPee] = useState(false);
-  const [hadPoop, setHadPoop] = useState(false);
+  const [peeCount, setPeeCount] = useState(0);
+  const [poopCount, setPoopCount] = useState(0);
+  const hadPee = peeCount > 0;
+  const hadPoop = poopCount > 0;
   const [note, setNote] = useState('');
   const [completedAt, setCompletedAt] = useState<Date>(new Date());
   const [completedByUserId, setCompletedByUserId] = useState<string | undefined>(undefined);
@@ -68,8 +71,9 @@ export function EditDoneDetailsModal({
 
   useEffect(() => {
     if (visible && walk) {
-      setHadPee(Boolean(walk.hadPee));
-      setHadPoop(Boolean(walk.hadPoop));
+      const counts = getWalkEventCounts(walk);
+      setPeeCount(counts.pee);
+      setPoopCount(counts.poop);
       setNote(walk.note ?? '');
       setCompletedAt(walk.completedAt ? new Date(walk.completedAt) : new Date(`${walk.date}T${walk.scheduledTime}:00`));
       setCompletedByUserId(walk.completedByUserId ?? walk.responsibleUserId);
@@ -107,13 +111,13 @@ export function EditDoneDetailsModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="סגירת עריכת פרטי הטיול"
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="סגירת עריכת פרטי הטיול" />
+          <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
             <RtlText style={styles.subtitle}>
@@ -121,12 +125,30 @@ export function EditDoneDetailsModal({
             </RtlText>
 
             <View style={styles.toggleRow}>
-              <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
-                <RtlText style={styles.toggleEmoji}>💧</RtlText>
-              </Pressable>
-              <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
-                <RtlText style={styles.toggleEmoji}>💩</RtlText>
-              </Pressable>
+              <View style={styles.needColumn}>
+                <Pressable onPress={() => setPeeCount((c) => (c > 0 ? 0 : 1))} accessibilityRole="checkbox" accessibilityState={{ checked: hadPee }} accessibilityLabel="פיפי" style={[styles.toggle, hadPee && styles.toggleActivePee]}>
+                  <RtlText style={styles.toggleEmoji}>💧</RtlText>
+                </Pressable>
+                {hadPee ? (
+                  <View style={styles.stepperRow}>
+                    <Pressable onPress={() => setPeeCount((c) => Math.max(0, c - 1))} hitSlop={8} accessibilityRole="button" accessibilityLabel="פחות פיפי" style={styles.stepperBtn}><RtlText style={styles.stepperSign}>−</RtlText></Pressable>
+                    <RtlText style={styles.stepperCount} accessibilityLabel={`כמות פיפי ${peeCount}`}>{peeCount}</RtlText>
+                    <Pressable onPress={() => setPeeCount((c) => c + 1)} hitSlop={8} accessibilityRole="button" accessibilityLabel="עוד פיפי" style={styles.stepperBtn}><RtlText style={styles.stepperSign}>+</RtlText></Pressable>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.needColumn}>
+                <Pressable onPress={() => setPoopCount((c) => (c > 0 ? 0 : 1))} accessibilityRole="checkbox" accessibilityState={{ checked: hadPoop }} accessibilityLabel="קקי" style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
+                  <RtlText style={styles.toggleEmoji}>💩</RtlText>
+                </Pressable>
+                {hadPoop ? (
+                  <View style={styles.stepperRow}>
+                    <Pressable onPress={() => setPoopCount((c) => Math.max(0, c - 1))} hitSlop={8} accessibilityRole="button" accessibilityLabel="פחות קקי" style={styles.stepperBtn}><RtlText style={styles.stepperSign}>−</RtlText></Pressable>
+                    <RtlText style={styles.stepperCount} accessibilityLabel={`כמות קקי ${poopCount}`}>{poopCount}</RtlText>
+                    <Pressable onPress={() => setPoopCount((c) => c + 1)} hitSlop={8} accessibilityRole="button" accessibilityLabel="עוד קקי" style={styles.stepperBtn}><RtlText style={styles.stepperSign}>+</RtlText></Pressable>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
             <RtlText style={styles.label}>שעת ביצוע</RtlText>
@@ -210,6 +232,8 @@ export function EditDoneDetailsModal({
                   onSave({
                     hadPee,
                     hadPoop,
+                    peeCount,
+                    poopCount,
                     note: note.trim(),
                     // Only included when this caller opted into the
                     // picker — History's existing call site (no `users`/
@@ -243,8 +267,8 @@ export function EditDoneDetailsModal({
               />
             ) : null}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
       <ConfirmModal
         visible={deleteConfirmVisible}
@@ -268,6 +292,11 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 12 },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 6, textAlign: 'right' },
+  needColumn: { alignItems: 'center', gap: spacing.xs },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepperBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  stepperSign: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, lineHeight: 20 },
+  stepperCount: { minWidth: 20, textAlign: 'center', fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   toggleRow: { flexDirection: 'row', gap: spacing.sm },
   toggle: {
     flex: 1,

@@ -134,6 +134,19 @@ describe('scheduleStore.updateRule — reconciles entries/walks for a recurring 
     expect(reloadedTodayNew?.status).toBe('pending');
   });
 
+  it('moving a rule to a time that already passed today, after today\'s walk was done, creates no second walk for today (field report 2026-11-10)', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    // 13:00 now; today's 07:00 walk (walk-0700) is already done. Move the rule EARLIER, to 06:30.
+    await useScheduleStore.getState().updateRule('rule-0700', { time: '06:30' });
+
+    const state = useScheduleStore.getState();
+    expect(state.actionError).toBeNull();
+    expect(state.walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
+    const todayNew = state.entries.filter((e) => e.ruleId === 'rule-0700' && e.date === '2026-10-05' && e.id !== 'entry-0700');
+    expect(todayNew).toHaveLength(0);
+    expect(state.walks.some((w) => w.date === '2026-10-05' && w.scheduledTime === '06:30')).toBe(false);
+  });
+
   it('editing the rule a second time updates the already-regenerated pending occurrence in place, never creating a second duplicate for today', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');

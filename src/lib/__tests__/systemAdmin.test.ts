@@ -111,15 +111,10 @@ describe('lib/systemAdmin — Supabase mode', () => {
     expect(result).toMatchObject({ familyId: 'qa-1', familyName: 'משפחת בדיקה', inviteCode: 'QATEST', dogName: null });
   });
 
-  it('deletes only through the explicit-confirmation test-family RPC and propagates authorization failures', async () => {
-    const rpc = jest.fn()
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'return to original family first' } });
-    mockSupabaseClient(rpc);
-    const { deleteSystemAdminTestFamily } = require('../systemAdmin');
-    await expect(deleteSystemAdminTestFamily('qa-1')).rejects.toBeTruthy();
-    expect(rpc).toHaveBeenNthCalledWith(1, 'system_admin_list_test_family_photo_paths', { p_family_id: 'qa-1' });
-    expect(rpc).toHaveBeenNthCalledWith(2, 'system_admin_delete_test_family', { p_family_id: 'qa-1', p_confirm: 'DELETE TEST FAMILY' });
+  it('retires the incomplete QA-only deletion helper in favor of the complete audited flow', () => {
+    const systemAdmin = require('../systemAdmin');
+    expect(systemAdmin.deleteSystemAdminTestFamily).toBeUndefined();
+    expect(systemAdmin.permanentlyDeleteSystemAdminFamily).toEqual(expect.any(Function));
   });
 
   it('re-enters a listed test family through its guarded switch RPC', async () => {

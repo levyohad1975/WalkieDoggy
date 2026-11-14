@@ -26,7 +26,8 @@ describe('HistoryScreen wires free-text search over walk notes (structural)', ()
   it('the history list filter chain checks walkMatchesHistorySearch and depends on historySearchQuery', () => {
     const idx = source.indexOf('if (!walkMatchesHistorySearch(w, historySearchQuery)) return false;');
     expect(idx).toBeGreaterThan(-1);
-    const depsIdx = source.indexOf('[allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery]');
+    // 2026-11-10: the chain also filters to walks awaiting an update (onlyAwaiting).
+    const depsIdx = source.indexOf('[allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery, onlyAwaiting]');
     expect(depsIdx).toBeGreaterThan(idx);
   });
 });

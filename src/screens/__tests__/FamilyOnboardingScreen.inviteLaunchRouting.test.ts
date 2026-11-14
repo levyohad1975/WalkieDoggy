@@ -22,8 +22,10 @@ describe('FamilyOnboardingScreen — invite-link launch detection takes preceden
   it('a present invite token wins over a join code and over isInstalledWebApp — mode initializes straight into redeem, never pwaChoice or choose', () => {
     const modeInit = source.match(/useState<Mode>\(([^)]*)\);/);
     expect(modeInit).not.toBeNull();
+    // installFirst is only ever true for an iPhone browser that is not the
+    // home-screen app (FamilyOnboardingScreen.installFirst.test.ts).
     expect(modeInit![1].replace(/\s+/g, ' ').trim()).toBe(
-      "initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'"
+      "installFirst ? 'installFirst' : initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : startMode"
     );
   });
 

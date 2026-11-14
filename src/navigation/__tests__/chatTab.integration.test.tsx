@@ -186,6 +186,7 @@ describe('Family Chat — navigation entry, badge and session lifecycle', () => 
 
     await waitFor(() => expect(screen.getByText('CHAT_SCREEN')).toBeTruthy());
     expect(useChatStore.getState().activeConversationId).toBe('conv-family-main');
+    expect(useChatStore.getState().notificationMessageId).toBe('m1');
   });
 
   it('switching family releases the old Realtime subscription and loads the new family\'s conversations', async () => {

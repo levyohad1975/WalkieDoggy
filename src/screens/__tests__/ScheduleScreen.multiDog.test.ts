@@ -15,7 +15,7 @@ describe('ScheduleScreen multi-dog wiring (structural)', () => {
 
   it('destructures dogs/selectedDogId/selectDog from familyStore and renders DogSelectorRow only for 2+ dogs', () => {
     expect(source).toContain(
-      'const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();'
+      'const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();'
     );
     expect(source).toContain("import { DogSelectorRow } from '../components/DogSelectorRow';");
     expect(source).toMatch(/\{dogs\.length > 1 \? \(\s*\n\s*<DogSelectorRow dogs=\{dogs\} selectedDogId=\{selectedDogId\} onSelect=\{\(dogId\) => void selectDog\(dogId\)\} \/>/);
@@ -23,7 +23,7 @@ describe('ScheduleScreen multi-dog wiring (structural)', () => {
 
   it('derives dog-filtered visibleWalks/visibleRules and feeds them into grouped/sortedRules, not the raw family-wide walks/rules', () => {
     expect(source).toMatch(
-      /const visibleWalks = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? walks\.filter\(\(w\) => w\.dogId === dog\.id\) : walks\),/
+      /const visibleWalks = useMemo\(\s*\n\s*\(\) => dedupeCanonicalWalks\(dogs\.length > 1 && dog \? walks\.filter\(\(w\) => w\.dogId === dog\.id\) : walks\),/
     );
     expect(source).toMatch(
       /const visibleRules = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? rules\.filter\(\(r\) => r\.dogId === dog\.id\) : rules\),/

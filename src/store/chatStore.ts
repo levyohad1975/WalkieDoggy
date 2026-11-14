@@ -14,14 +14,17 @@ import {
 import { releasePreparedChatImage, type PreparedChatImage } from '../lib/chatImages';
 import {
   CHAT_PAGE_SIZE,
+  applyChatReactions,
   applyMessageToConversations,
+  nextChatReaction,
+  type ChatReactionsByMessage,
   mergeChatMessages,
   sortChatConversations,
   totalUnreadChatMessages,
   validateChatBody,
 } from '../logic/chat';
 import { chatAttachmentPath, checkPreparedChatImage } from '../logic/chatImages';
-import type { ChatConversationState, ChatMessage } from '../types';
+import type { ChatConversationState, ChatMessage, ChatReaction } from '../types';
 
 /**
  * Chat client state: the conversation list (the family conversation plus the
@@ -80,6 +83,8 @@ interface ChatState {
   threads: Record<string, ChatThread>;
   /** The conversation currently open on screen, if any. */
   activeConversationId: string | null;
+  /** Message requested by a tapped push; cleared after locating it or reaching history end. */
+  notificationMessageId: string | null;
   /** Unread messages across ALL conversations — the Chat tab badge. */
   unreadCount: number;
   /** Read marker captured when the open conversation was entered — positions the "new messages" divider. */
@@ -92,17 +97,20 @@ interface ChatState {
   sendErrors: Record<string, string>;
   /** True while a private conversation is being opened/created. */
   openingDirect: boolean;
+  /** Reactions by message id, then by user id (2026-11-12). */
+  reactions: ChatReactionsByMessage;
 
   start: (sessionKey: string) => Promise<void>;
   stop: () => void;
   refresh: () => Promise<void>;
   resync: () => Promise<void>;
-  openConversation: (conversationId: string) => void;
+  openConversation: (conversationId: string, messageId?: string) => void;
   /** Opens a conversation as soon as it is known (used by a tapped notification that can arrive before the list). */
-  requestOpenConversation: (conversationId: string) => void;
+  requestOpenConversation: (conversationId: string, messageId?: string) => void;
+  clearNotificationMessage: (messageId: string) => void;
   closeConversation: () => void;
   startDirect: (otherUserId: string) => Promise<string | null>;
-  loadOlder: () => Promise<void>;
+  loadOlder: () => Promise<boolean>;
   send: (draft: string) => ChatSendResult;
   sendImage: (image: PreparedChatImage, caption: string) => ChatSendResult;
   retry: (messageId: string) => void;
@@ -113,6 +121,8 @@ interface ChatState {
   clearForMe: () => Promise<boolean>;
   clearForEveryone: () => Promise<boolean>;
   setMuted: (muted: boolean) => Promise<void>;
+  /** Sets this profile's reaction; tapping the same emoji again removes it. */
+  react: (messageId: string, emoji: string) => Promise<void>;
   setScreenActive: (active: boolean) => void;
   setOnline: (online: boolean) => void;
   clearActionError: () => void;
@@ -126,11 +136,13 @@ const INITIAL = {
   conversations: [] as ChatConversationState[],
   threads: {} as Record<string, ChatThread>,
   activeConversationId: null as string | null,
+  notificationMessageId: null as string | null,
   unreadCount: 0,
   unreadDividerFrom: null as string | null,
   live: 'reconnecting' as ChatLiveStatus,
   sendErrors: {} as Record<string, string>,
   openingDirect: false,
+  reactions: {} as ChatReactionsByMessage,
 };
 
 // Session bookkeeping lives outside the store: none of it is render state.
@@ -138,12 +150,14 @@ let generation = 0;
 let activeSessionKey: string | null = null;
 let unsubscribe: (() => void) | null = null;
 let hasBeenLive = false;
-let pendingOpenId: string | null = null;
+let pendingOpen: { conversationId: string; messageId?: string } | null = null;
 const inFlight = new Set<string>();
 /** Ids already counted, so a redelivered Realtime event never bumps the badge twice. */
 const countedIds = new Set<string>();
 let markReadTimer: ReturnType<typeof setTimeout> | null = null;
 let listRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** Newest updated_at applied per "message|user", so an older row never undoes a newer reaction. */
+const reactionStamps = new Map<string, string>();
 
 interface PendingImage {
   image: PreparedChatImage;
@@ -198,6 +212,22 @@ export const useChatStore = create<ChatState>((set, get) => {
     });
   };
 
+  const applyReactions = (token: number, rows: ChatReaction[]) => {
+    if (!isCurrent(token) || rows.length === 0) return;
+    set({ reactions: applyChatReactions(get().reactions, rows, reactionStamps) });
+  };
+
+  /** Best-effort: reactions are decoration; a failure (or a backend without them) never breaks the thread. */
+  const loadReactions = (token: number, conversationId: string, messages: ChatMessage[]) => {
+    const transport = getChatTransport();
+    const ids = messages.filter((m) => m.delivery === 'sent' && !m.deletedAt).map((m) => m.id);
+    if (!transport.listReactions || ids.length === 0) return;
+    transport
+      .listReactions(conversationId, ids)
+      .then((rows) => applyReactions(token, rows))
+      .catch(() => undefined);
+  };
+
   const isBeingRead = (conversationId: string) =>
     get().screenActive && get().activeConversationId === conversationId;
 
@@ -246,6 +276,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       hasBeenLive = false;
       unsubscribe = transport.subscribe({
         onMessage: (message) => handleIncoming(token, message),
+        onReaction: (reaction) => {
+          if (!isCurrent(token)) return;
+          // Only for a conversation this session knows; RLS already limited delivery.
+          if (!get().conversations.some((c) => c.conversationId === reaction.conversationId)) return;
+          applyReactions(token, [reaction]);
+        },
         onConversationCleared: (conversationId, clearedAt) => {
           if (!isCurrent(token)) return;
           applyConversationClear(conversationId, clearedAt);
@@ -265,10 +301,18 @@ export const useChatStore = create<ChatState>((set, get) => {
       });
     }
 
-    if (pendingOpenId && listing.conversations.some((c) => c.conversationId === pendingOpenId)) {
-      const target = pendingOpenId;
-      pendingOpenId = null;
-      get().openConversation(target);
+    if (pendingOpen && listing.conversations.some((c) => c.conversationId === pendingOpen?.conversationId)) {
+      const target = pendingOpen;
+      pendingOpen = null;
+      get().openConversation(target.conversationId, target.messageId);
+    } else if (pendingOpen) {
+      // The server-authoritative list is the access check. Do not keep a
+      // notification target around if this profile cannot see the chat.
+      pendingOpen = null;
+      set({
+        notificationMessageId: null,
+        actionError: 'השיחה אינה זמינה לחשבון הזה.',
+      });
     }
   };
 
@@ -292,6 +336,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const current = threadOf(conversationId);
       const wasLoaded = current.status === 'ready';
       page.forEach((m) => countedIds.add(m.id));
+      loadReactions(token, conversationId, page);
       patchThread(conversationId, {
         status: 'ready',
         // Keep what this device already holds (older pages, unsent bubbles).
@@ -477,10 +522,11 @@ export const useChatStore = create<ChatState>((set, get) => {
     stop: () => {
       generation += 1;
       activeSessionKey = null;
-      pendingOpenId = null;
+      pendingOpen = null;
       clearTimers();
       inFlight.clear();
       countedIds.clear();
+      reactionStamps.clear();
       hasBeenLive = false;
       const release = unsubscribe;
       unsubscribe = null;
@@ -514,13 +560,14 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (isCurrent(token) && get().status === 'ready') await flushUnsent(token);
     },
 
-    openConversation: (conversationId) => {
+    openConversation: (conversationId, messageId) => {
       const conversation = get().conversations.find((c) => c.conversationId === conversationId);
       if (!conversation) return;
       const token = generation;
       set({
         activeConversationId: conversationId,
         unreadDividerFrom: conversation.unreadCount > 0 ? conversation.lastReadAt : null,
+        notificationMessageId: messageId ?? null,
       });
       if (threadOf(conversationId).status === 'ready') {
         if (get().screenActive) scheduleMarkRead();
@@ -531,13 +578,17 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     },
 
-    requestOpenConversation: (conversationId) => {
+    requestOpenConversation: (conversationId, messageId) => {
       if (get().conversations.some((c) => c.conversationId === conversationId)) {
-        get().openConversation(conversationId);
+        get().openConversation(conversationId, messageId);
         return;
       }
-      pendingOpenId = conversationId;
+      pendingOpen = { conversationId, messageId };
       if (get().status === 'ready') scheduleListRefresh();
+    },
+
+    clearNotificationMessage: (messageId) => {
+      if (get().notificationMessageId === messageId) set({ notificationMessageId: null });
     },
 
     closeConversation: () => {
@@ -569,11 +620,11 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     loadOlder: async () => {
       const conversationId = get().activeConversationId;
-      if (!conversationId) return;
+      if (!conversationId) return false;
       const thread = threadOf(conversationId);
-      if (!thread.hasMore || thread.loadingOlder) return;
+      if (!thread.hasMore || thread.loadingOlder) return false;
       const oldest = thread.messages.find((m) => m.delivery === 'sent');
-      if (!oldest) return;
+      if (!oldest) return false;
       const token = generation;
       patchThread(conversationId, { loadingOlder: true });
       try {
@@ -581,21 +632,24 @@ export const useChatStore = create<ChatState>((set, get) => {
           before: oldest.createdAt,
           limit: CHAT_PAGE_SIZE,
         });
-        if (!isCurrent(token)) return;
+        if (!isCurrent(token)) return false;
         const current = threadOf(conversationId);
         const known = new Set(current.messages.map((m) => m.id));
         const fresh = page.filter((m) => !known.has(m.id));
         fresh.forEach((m) => countedIds.add(m.id));
+        loadReactions(token, conversationId, fresh);
         patchThread(conversationId, {
           messages: mergeChatMessages(current.messages, fresh),
           // A full page that still produced something new means there may be more.
           hasMore: fresh.length > 0 && page.length >= CHAT_PAGE_SIZE,
           loadingOlder: false,
         });
+        return fresh.length > 0;
       } catch (error) {
-        if (!isCurrent(token)) return;
+        if (!isCurrent(token)) return false;
         patchThread(conversationId, { loadingOlder: false });
         set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לטעון הודעות קודמות. נסו שוב.') });
+        return false;
       }
     },
 
@@ -777,6 +831,30 @@ export const useChatStore = create<ChatState>((set, get) => {
         if (!isCurrent(token)) return;
         apply(before);
         set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לעדכן את ההתראות. נסו שוב.') });
+      }
+    },
+
+    react: async (messageId, emoji) => {
+      const transport = getChatTransport();
+      const conversation = activeConversation();
+      if (!conversation || !transport.setReaction) return;
+      const token = generation;
+      const me = conversation.userId;
+      const before = get().reactions[messageId]?.[me];
+      const next = nextChatReaction(before, emoji);
+      const stamp = new Date().toISOString();
+      // Optimistic, and stamped "now" so a late echo of the previous state cannot undo it.
+      applyReactions(token, [{ messageId, conversationId: conversation.conversationId, userId: me, emoji: next, updatedAt: stamp }]);
+      try {
+        const saved = await transport.setReaction(messageId, next);
+        // From here the server's clock is the reference for this person's row.
+        if (isCurrent(token)) reactionStamps.delete(`${messageId}|${me}`);
+        applyReactions(token, [saved]);
+      } catch (error) {
+        if (!isCurrent(token)) return;
+        reactionStamps.delete(`${messageId}|${me}`);
+        applyReactions(token, [{ messageId, conversationId: conversation.conversationId, userId: me, emoji: before ?? null, updatedAt: stamp }]);
+        set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לשמור את התגובה. נסו שוב.') });
       }
     },
 

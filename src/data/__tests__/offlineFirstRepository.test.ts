@@ -4,6 +4,14 @@ import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, Sch
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
+    getSyncReplayIdentity: jest.fn(async () => {
+      const queue = require('../syncQueue');
+      return {
+        authUserId: queue.getSyncQueueAuthUserHint(),
+        profileId: queue.getSyncQueueActorHint(),
+        familyId: queue.getSyncQueueFamilyHint(),
+      };
+    }),
     getFamily: jest.fn(),
     getUsers: jest.fn().mockResolvedValue([]),
     createUser: jest.fn().mockResolvedValue(undefined),
@@ -19,6 +27,7 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     upsertHealthTask: jest.fn(),
     getGpsSession: jest.fn(),
     upsertGpsSession: jest.fn(),
+    saveGpsReconstructionUpdateV1: jest.fn().mockResolvedValue(undefined),
     getGpsSessionsForWalkIds: jest.fn(),
     getAchievementUnlocks: jest.fn(),
     upsertAchievementUnlock: jest.fn(),
@@ -75,7 +84,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Admin',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user); // seed the local cache the old way (upsertUser is unaffected by this fix)
@@ -105,7 +114,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -134,7 +143,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -204,7 +213,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -437,8 +446,10 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
       upsertUser: jest.fn().mockResolvedValue(undefined),
     });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
 
     const queuedDog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 2 };
     await (repo as any).queue.enqueue({ type: 'upsertDog', payload: queuedDog });
@@ -448,7 +459,7 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
 
     const memberWithPhoto: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
     await repo.upsertUser(memberWithPhoto);
 
@@ -466,12 +477,14 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
       upsertUser: jest.fn().mockReturnValueOnce(olderEdit).mockResolvedValueOnce(undefined),
     });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
 
     const olderMember: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
     const memberWithPhoto: FamilyUser = { ...olderMember, photoUrl: 'https://example.test/member-photo.jpg' };
     await (repo as any).queue.enqueue({ type: 'upsertUser', payload: olderMember });
@@ -495,14 +508,55 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
     const denied = Object.assign(new Error('new row violates row-level security policy'), { code: '42501' });
     const remote = stubRemote({ upsertUser: jest.fn().mockRejectedValue(denied) });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
     const memberWithPhoto: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
 
     await expect(repo.upsertUser(memberWithPhoto)).rejects.toBe(denied);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
+describe('OfflineFirstRepository.updateUserProfile — server-confirmed photo persistence', () => {
+  const memberWithPhoto: FamilyUser = {
+    id: 'user-photo', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
+    photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, chatNotificationsEnabled: true, gamificationEnabled: true, createdAt: 'now',
+  };
+
+  it('requires an online server confirmation and does not queue or update local state offline', async () => {
+    const updateUserProfile = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(false, stubRemote({ updateUserProfile }));
+
+    await expect(repo.updateUserProfile(memberWithPhoto)).rejects.toThrow('require server confirmation');
+
+    expect(updateUserProfile).not.toHaveBeenCalled();
+    expect(await repo.pendingSyncCount()).toBe(0);
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([]);
+  });
+
+  it('stores the profile locally only after the remote update confirms success', async () => {
+    const updateUserProfile = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(true, stubRemote({ updateUserProfile }));
+
+    await repo.updateUserProfile(memberWithPhoto);
+
+    expect(updateUserProfile).toHaveBeenCalledWith(memberWithPhoto);
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([memberWithPhoto]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('does not change local profile state if the remote rejects the write', async () => {
+    const denied = Object.assign(new Error('profile update denied'), { code: '42501' });
+    const repo = await makeRepo(true, stubRemote({ updateUserProfile: jest.fn().mockRejectedValue(denied) }));
+
+    await expect(repo.updateUserProfile(memberWithPhoto)).rejects.toBe(denied);
+
+    expect(await (repo as any).local.getUsers('family-1')).toEqual([]);
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 });
@@ -553,7 +607,7 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
   it('getUsers returns the remote list', async () => {
     const fresh: FamilyUser[] = [
-      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
+      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() },
     ];
     const remote = stubRemote({ getUsers: jest.fn().mockResolvedValue(fresh) });
     const repo = await makeRepo(true, remote);
@@ -695,7 +749,7 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user and enqueues a sync op', async () => {
     const repo = await makeRepo(false, stubRemote());
@@ -748,12 +802,27 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
       id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
       distanceMeters: 500, pointCount: 20, source: 'device_gps',
       createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 1 }], distanceMeters: 200, durationSeconds: 180, confidence: 'high', sourceWalkId: 'walk-old' },
     };
 
     await repo.upsertGpsSession(session);
 
     await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
     expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('caches reconstruction locally and queues only an estimate-only RPC payload for safe offline replay', async () => {
+    const remote = stubRemote();
+    const repo = await makeRepo(false, remote);
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', distanceMeters: 500, pointCount: 20,
+      routePoints: [{ latitude: 32.01, longitude: 34, timestamp: 1_800_100_000_000 }], source: 'device_gps', createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 0 }, { latitude: 32.001, longitude: 34, timestamp: 0 }], distanceMeters: 120, durationSeconds: 100, confidence: 'high', sourceWalkId: 'walk-old' },
+    };
+    await repo.saveGpsReconstructionV1(session);
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(await repo.pendingSyncCount()).toBe(1);
+    expect(remote.saveGpsReconstructionUpdateV1).not.toHaveBeenCalled();
   });
 
   it('updateUserGamificationSetting updates the local flag and enqueues a sync op', async () => {
@@ -866,7 +935,7 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user, nothing queued', async () => {
     const repo = await makeRepo(true, null);
@@ -1007,8 +1076,10 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     // otherwise (no actor claimed) it would be quarantined instead of
     // attempted at all; see SyncQueue.flush()'s own `claimedByUserId ==
     // null` branch, covered separately below.
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-test');
 
     // upsertDog is intentionally server-authoritative while online and now
     // propagates a rejected save directly. Seed the queue explicitly here:
@@ -1032,8 +1103,10 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
     const conflictError = Object.assign(new Error('duplicate key'), { code: '23505' });
     const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-test');
     await (repo as any).queue.enqueue({ type: 'upsertDog', payload: dog });
     await repo.trySync();
     expect(await repo.getSyncConflicts!()).toHaveLength(1);
@@ -1048,21 +1121,24 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     await expect(repo.getQuarantinedSyncItems!()).resolves.toEqual([]);
   });
 
-  it('getQuarantinedSyncItems reflects a real untagged/legacy write that flush() refused to attempt', async () => {
-    // No actor claimed on this device (setSyncQueueActorGetter never
-    // called) — flush() quarantines rather than attempts an untagged
-    // write, per SyncQueue's own audit-attribution safety guarantee.
-    // Uses updateUserReminderSetting (always enqueue+trySync, unlike
-    // upsertDog's direct-online-write-first shortcut) so this exercises
-    // the queue's flush() path, not an early return before it.
+  it('keeps an untagged/legacy write pending when flush() cannot verify its owner', async () => {
+    // Unknown ownership must stay in the durable FIFO for an authorized
+    // reconciliation; it is never quarantined, discarded, or replayed.
     const updateUserReminderSetting = jest.fn().mockResolvedValue(undefined);
     const repo = await makeRepo(true, stubRemote({ updateUserReminderSetting }));
-
-    await repo.updateUserReminderSetting('u1', false);
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
+    await (repo as any).queue.enqueue({ type: 'updateUserReminderSetting', payload: { userId: 'u1', enabled: false } });
+    setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
+    await repo.trySync();
 
     const quarantined = await repo.getQuarantinedSyncItems!();
-    expect(quarantined).toHaveLength(1);
-    expect(quarantined[0].op.type).toBe('updateUserReminderSetting');
-    expect(updateUserReminderSetting).not.toHaveBeenCalled(); // never even attempted
+    expect(quarantined).toHaveLength(0);
+    expect(await repo.pendingSyncCount()).toBe(1);
+    expect(updateUserReminderSetting).not.toHaveBeenCalled();
   });
 });
