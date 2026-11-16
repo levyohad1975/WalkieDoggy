@@ -312,6 +312,9 @@ jobs:
           # Keep the follow-up freeze migration with its prerequisite; otherwise
           # the empty replay would apply it before the tombstone table exists.
           mv supabase/migrations/20261016153000_freeze_family_deletion_window.sql /tmp/freeze_family_deletion_window.sql
+          # Alters walk_lifecycle_events, which the staged v1.1 migration
+          # creates; applied with the later batch below.
+          mv supabase/migrations/20261116090000_auto_close_forgotten_walks.sql /tmp/auto_close_forgotten_walks.sql
 
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
@@ -415,6 +418,7 @@ jobs:
         run: |
           mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
           mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
+          mv /tmp/auto_close_forgotten_walks.sql supabase/migrations/20261116090000_auto_close_forgotten_walks.sql
           supabase migration up --local --include-all
           psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/system_admin_permanent_family_deletion.sql
@@ -621,6 +625,9 @@ jobs:
           fi
           if [ -f /tmp/freeze_family_deletion_window.sql ]; then
             mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
+          fi
+          if [ -f /tmp/auto_close_forgotten_walks.sql ]; then
+            mv /tmp/auto_close_forgotten_walks.sql supabase/migrations/20261116090000_auto_close_forgotten_walks.sql
           fi
           if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 
