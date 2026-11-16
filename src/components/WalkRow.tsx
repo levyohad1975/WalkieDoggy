@@ -224,6 +224,11 @@ export function WalkRow({
               <View style={styles.awaitingChip}>
                 <RtlText style={styles.awaitingChipText} numberOfLines={1}>ממתין לעדכון</RtlText>
               </View>
+            ) : walk.status === 'done' && walk.autoClosedAt ? (
+              // Closed by the server after an hour with no activity (2026-11-16).
+              <View style={styles.awaitingChip} accessibilityLabel="הטיול נסגר אוטומטית כי לא הייתה פעילות. אפשר לתקן את השעה">
+                <RtlText style={styles.awaitingChipText} numberOfLines={1}>נסגר אוטומטית</RtlText>
+              </View>
             ) : (
               <StatusBadge status={walk.status} overdue={overdue} glyphOnly={historyCompact} />
             )}

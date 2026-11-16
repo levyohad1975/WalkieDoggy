@@ -112,6 +112,9 @@ const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'https://walkie-doggy-lin
 const CRON_SECRET = Deno.env.get('WALK_REMINDER_CRON_SECRET') ?? '';
 /** A walk still in progress this long after it started gets one "עדיין פעיל?" push (typical walk: 10–20 minutes). */
 const WALK_RUNNING_LONG_MINUTES = 30;
+/** A walk left running this long after it started, with no GPS/heartbeat/tap for WALK_AUTO_CLOSE_IDLE_MINUTES, is closed (2026-11-16). */
+const WALK_AUTO_CLOSE_AFTER_MINUTES = 60;
+const WALK_AUTO_CLOSE_IDLE_MINUTES = 30;
 
 // P0 notification-delivery investigation (Staging security review, item 3):
 // this is the ONLY credential this function trusts (see the header above),
@@ -394,6 +397,7 @@ Deno.serve(async (req: Request) => {
     sent: 0,
     failed: 0,
     runningLongSent: 0,
+    autoClosed: 0,
     errors: [] as string[],
   };
 
@@ -576,6 +580,34 @@ Deno.serve(async (req: Request) => {
     } catch (runningLongErr) {
       summary.errors.push(`running-long: ${String(runningLongErr)}`);
       console.error('send-walk-reminders: running-long failed', runningLongErr);
+    }
+
+    // ---- Step 6 (owner request 2026-11-16): close a walk left running.
+    // auto_close_forgotten_walks() finishes, as the walker, any walk that
+    // started over an hour ago and had no GPS / heartbeat / tap for 30
+    // minutes, and returns each one once; the walker gets one push. ----
+    try {
+      const { data: closedWalks, error: closeError } = await serviceClient.rpc('auto_close_forgotten_walks', {
+        p_min_age_minutes: WALK_AUTO_CLOSE_AFTER_MINUTES,
+        p_idle_minutes: WALK_AUTO_CLOSE_IDLE_MINUTES,
+      });
+      if (closeError) throw closeError;
+      for (const w of closedWalks ?? []) {
+        summary.autoClosed += 1;
+        if (!w.recipient_user_id) continue;
+        const dogName = w.dog_name ?? 'הכלב/ה';
+        const result = await sendToRecipients(
+          serviceClient,
+          [w.recipient_user_id],
+          `⏹️ הטיול של ${dogName} נסגר אוטומטית`,
+          `לא הייתה פעילות כבר חצי שעה, אז הטיול נסגר בשעה ${w.completed_local} (${w.duration_minutes} דק'). אם זה לא נכון, אפשר לתקן בהיסטוריה.`,
+          { type: 'walkAutoClosed', walkId: w.walk_id }
+        );
+        if (result.errors.length > 0) summary.errors.push(...result.errors);
+      }
+    } catch (autoCloseErr) {
+      summary.errors.push(`auto-close: ${String(autoCloseErr)}`);
+      console.error('send-walk-reminders: auto-close failed', autoCloseErr);
     }
 
     return new Response(JSON.stringify(summary), { status: 200 });

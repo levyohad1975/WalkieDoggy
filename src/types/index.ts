@@ -211,6 +211,8 @@ export interface Walk {
   /** Local-only lifecycle reconciliation marker; never means the server has confirmed the transition. */
   lifecycleSyncStatus?: 'pending' | 'conflict';
   completedAt?: string; // ISO timestamp
+  /** Set when the server closed a forgotten walk (no activity; migration 20261116090000). */
+  autoClosedAt?: string;
   completedByUserId?: string; // who actually walked the dog — may differ from responsibleUserId
   endedByUserId?: string; // profile that pressed End (admin may differ from actual walker)
   hadPee?: boolean;

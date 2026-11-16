@@ -148,6 +148,7 @@ export function toWalk(row: any): Walk {
     actualWalkerUserId: row.actual_walker_user_id ?? row.completed_by_user_id ?? undefined,
     duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
     completedAt: row.completed_at ?? undefined,
+    autoClosedAt: row.auto_closed_at ?? undefined,
     completedByUserId: row.completed_by_user_id ?? undefined,
     endedByUserId: row.ended_by_user_id ?? undefined,
     hadPee: row.had_pee ?? undefined,
