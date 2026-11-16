@@ -38,6 +38,12 @@ describe('RoutePreview basemaps (owner request 2026-11-14)', () => {
     expect(html).toContain('Maxar');
   });
 
+  it('hides the street map building blocks while satellite imagery is on (owner request 2026-11-16)', () => {
+    const html = buildMapHtml(route, [], true, false, undefined, { satelliteKey: KEY });
+    expect(html).toContain("l['source-layer']==='building'");
+    expect(html).toContain("satellite?'none':'visible'");
+  });
+
   it('rejects keys that are not plain tokens, so nothing can be injected into the map page', () => {
     expect(satelliteApiKey(undefined)).toBeNull();
     expect(satelliteApiKey('   ')).toBeNull();

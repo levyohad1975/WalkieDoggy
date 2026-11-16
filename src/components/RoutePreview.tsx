@@ -288,6 +288,10 @@ export function buildMapHtml(
       // Owner request 2026-11-16: satellite is the default; the button switches to the street map.
       map.addLayer({id:'satellite',type:'raster',source:'satellite',layout:{visibility:'visible'}},firstLabel?firstLabel.id:undefined);
       let satellite=true;
+      // Owner request 2026-11-16: the style's grey building blocks cover the real roofs, so hide them while imagery is on.
+      const buildingLayers=(map.getStyle().layers||[]).filter(l=>l['source-layer']==='building').map(l=>l.id);
+      const showBuildings=()=>buildingLayers.forEach(id=>map.setLayoutProperty(id,'visibility',satellite?'none':'visible'));
+      showBuildings();
       const showCredit=()=>{
         // Esri's credit must stay visible while its imagery is shown.
         const attrib=document.querySelector('.maplibregl-ctrl-attrib');
@@ -297,6 +301,7 @@ export function buildMapHtml(
       toggle.addEventListener('click',()=>{
         satellite=!satellite;
         map.setLayoutProperty('satellite','visibility',satellite?'visible':'none');
+        showBuildings();
         toggle.textContent=satellite?'🗺️ מפה':'🛰️ לוויין';
         toggle.setAttribute('aria-pressed',String(satellite));
         showCredit();
