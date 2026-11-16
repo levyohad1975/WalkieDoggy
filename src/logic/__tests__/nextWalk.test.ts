@@ -20,6 +20,18 @@ function makeWalk(overrides: Partial<Walk>): Walk {
 const NOW = new Date('2026-08-26T18:00:00');
 
 describe('computeNextWalk', () => {
+  it('shows an active walk from a previous day first, so it can be finished (field report 2026-11-16)', () => {
+    const yesterdayActive = makeWalk({ id: 'yesterday-active', date: '2026-08-25', scheduledTime: '18:00', status: 'in_progress', startedAt: '2026-08-25T18:41:54Z' });
+    const todayPending = makeWalk({ id: 'today-pending', date: '2026-08-26', scheduledTime: '17:30' });
+    expect(computeNextWalk([todayPending, yesterdayActive], NOW)?.id).toBe('yesterday-active');
+  });
+
+  it('a finished walk from a previous day does not take the card', () => {
+    const yesterdayDone = makeWalk({ id: 'yesterday-done', date: '2026-08-25', scheduledTime: '18:00', status: 'done' });
+    const todayPending = makeWalk({ id: 'today-pending', date: '2026-08-26', scheduledTime: '17:30' });
+    expect(computeNextWalk([todayPending, yesterdayDone], NOW)?.id).toBe('today-pending');
+  });
+
   it('does not surface an audited duplicate start as the active card or timer source', () => {
     const resolvedDuplicate = makeWalk({
       id: 'resolved-duplicate', status: 'in_progress', startedAt: '2026-08-26T06:00:00Z',

@@ -115,6 +115,14 @@ export function computeNextWalk(walks: Walk[], now: Date = new Date(), timeZone?
   const unresolved = walks.filter(
     (walk) => hasValidScheduleTime(walk) && (walk.status === 'pending' || isActiveWalk(walk))
   );
+  // Field report 2026-11-16: a scheduled walk started late the evening before
+  // was never finished. It stayed active on the server and blocked every new
+  // start ("there is already an active walk"), yet Home showed nothing,
+  // because only today's walks were candidates. An active walk is shown
+  // first whatever its date, so it can always be finished from Home.
+  const activeAnyDay = unresolved.filter((walk) => isActiveWalk(walk)).sort(compareScheduledWalks);
+  if (activeAnyDay.length > 0) return activeAnyDay[0];
+
   const todayWalks = unresolved.filter((walk) => walk.date === today.date);
 
   const dueTimes = walks
