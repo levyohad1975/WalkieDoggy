@@ -258,7 +258,7 @@ export function buildMapHtml(
   const tailCoords = JSON.stringify(homeLegs.tail);
   const homeCoord = JSON.stringify(homeLegs.home);
   const estimateCoords = JSON.stringify(estimatedPoints);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B;width:20px;height:20px;font-size:9px} .walk-pin.end{background:#fff;font-size:16px} .walk-pin.home{background:#fff;font-size:15px} .walk-pin.stop{width:24px;height:24px;background:#0B5C75;font-size:10px} #basemap-toggle{position:absolute;z-index:5;top:12px;right:12px;border:0;border-radius:20px;padding:10px 14px;background:#fff;color:#183e48;font:600 14px system-ui;box-shadow:0 1px 4px #0003}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}${satelliteTiles ? '<button id="basemap-toggle" aria-pressed="false">🛰️ לוויין</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B;width:20px;height:20px;font-size:9px} .walk-pin.end{background:#fff;font-size:16px} .walk-pin.home{background:#fff;font-size:15px} .walk-pin.stop{width:24px;height:24px;background:#0B5C75;font-size:10px} #basemap-toggle{position:absolute;z-index:5;top:12px;right:12px;border:0;border-radius:20px;padding:10px 14px;background:#fff;color:#183e48;font:600 14px system-ui;box-shadow:0 1px 4px #0003}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}${satelliteTiles ? '<button id="basemap-toggle" aria-pressed="true">🗺️ מפה</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   const estimatedPoints = ${estimateCoords};
   const tailPoints = ${tailCoords};
@@ -285,16 +285,21 @@ export function buildMapHtml(
       // Imagery sits under the style's labels (street names stay readable) and under the walk.
       const firstLabel=(map.getStyle().layers||[]).find(l=>l.type==='symbol');
       map.addSource('satellite',{type:'raster',tiles:[satelliteTiles],tileSize:256,maxzoom:19,attribution:${JSON.stringify(ESRI_IMAGERY_ATTRIBUTION)}});
-      map.addLayer({id:'satellite',type:'raster',source:'satellite',layout:{visibility:'none'}},firstLabel?firstLabel.id:undefined);
-      let satellite=false;
+      // Owner request 2026-11-16: satellite is the default; the button switches to the street map.
+      map.addLayer({id:'satellite',type:'raster',source:'satellite',layout:{visibility:'visible'}},firstLabel?firstLabel.id:undefined);
+      let satellite=true;
+      const showCredit=()=>{
+        // Esri's credit must stay visible while its imagery is shown.
+        const attrib=document.querySelector('.maplibregl-ctrl-attrib');
+        if(attrib){if(satellite)attrib.classList.add('maplibregl-compact-show');else foldAttribution();}
+      };
+      showCredit();
       toggle.addEventListener('click',()=>{
         satellite=!satellite;
         map.setLayoutProperty('satellite','visibility',satellite?'visible':'none');
         toggle.textContent=satellite?'🗺️ מפה':'🛰️ לוויין';
         toggle.setAttribute('aria-pressed',String(satellite));
-        // Esri's credit must stay visible while its imagery is shown.
-        const attrib=document.querySelector('.maplibregl-ctrl-attrib');
-        if(attrib){if(satellite)attrib.classList.add('maplibregl-compact-show');else foldAttribution();}
+        showCredit();
       });
     }else if(toggle){toggle.style.display='none';}
     const coordinates=points.map(p=>[p[1],p[0]]);

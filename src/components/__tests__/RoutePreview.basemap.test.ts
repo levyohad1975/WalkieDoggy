@@ -29,6 +29,10 @@ describe('RoutePreview basemaps (owner request 2026-11-14)', () => {
     const html = buildMapHtml(route, [], true, false, undefined, { satelliteKey: KEY });
     expect(html).toContain('id="basemap-toggle"');
     expect(html).toContain('🛰️ לוויין');
+    // Owner request 2026-11-16: satellite is shown first; the button offers the street map.
+    expect(html).toContain('<button id="basemap-toggle" aria-pressed="true">🗺️ מפה</button>');
+    expect(html).toContain("layout:{visibility:'visible'}");
+    expect(html).toContain('let satellite=true;');
     expect(html).toContain(`${ESRI_IMAGERY_TILES}?token=${KEY}`);
     expect(html).toContain('Powered by');
     expect(html).toContain('Maxar');
