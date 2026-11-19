@@ -6,7 +6,7 @@ import {
   planRuleDaysReconciliation,
   planStaleRuleEntryReconciliation,
   resolveResponsibleForDate,
-  ruleNeedsEntryBackfill,
+  missingRuleOccurrences,
 } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
 import { pickerDateToTime } from '../logic/timeInput';
@@ -353,19 +353,40 @@ async function loadScheduleForFamily(
     let finalWalks = walks;
     const today = localDateOnly(new Date());
     const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
-    const rulesNeedingFuture = rules.filter((rule) => ruleNeedsEntryBackfill(rule, finalEntries, today));
-    for (const rule of rulesNeedingFuture) {
-      const generated = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+    // Field report 2026-11-19: roll the horizon forward and fill gaps on
+    // every load, not only when a rule has no upcoming entry at all
+    // (missingRuleOccurrences explains what counts as covered).
+    for (const rule of rules.filter((r) => r.active)) {
+      let generated: ScheduleEntry[] = [];
+      try {
+        generated = missingRuleOccurrences(rule, finalEntries, today, endDate, () => generateId('entry'));
+      } catch {
+        continue; // a malformed rule must never block the schedule from loading
+      }
       if (generated.length === 0) continue;
-      await repository.addScheduleEntries(generated);
-      const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
-      const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-      const generatedWalks = trulyNew
+      try {
+        await repository.addScheduleEntries(generated);
+      } catch {
+        // E.g. a member's session may not create entries: leave it to the
+        // next device that can (usually the admin's); never fail the load.
+        continue;
+      }
+      const generatedWalks = generated
         .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, rule.familyId))
         .filter((entry) => occurrenceAtOrAfterRuleStart(entry, rule))
         .map((entry) => walkFromEntry(entry, rule.familyId));
-      for (const walk of generatedWalks) await repository.saveWalk(walk);
-      finalEntries = [...finalEntries, ...trulyNew];
+      const todayWalks = generatedWalks.filter((w) => w.date === today);
+      const futureWalks = generatedWalks.filter((w) => w.date !== today);
+      try {
+        for (const walk of todayWalks) await repository.saveWalk(walk);
+        if (futureWalks.length > 0) {
+          if (repository.queueWalksForBackgroundSync) await repository.queueWalksForBackgroundSync(futureWalks);
+          else for (const walk of futureWalks) await repository.saveWalk(walk);
+        }
+      } catch {
+        // The orphan-entry repair below (and the next load) recreates any walk that did not land.
+      }
+      finalEntries = [...finalEntries, ...generated];
       finalWalks = [...finalWalks, ...generatedWalks];
     }
 

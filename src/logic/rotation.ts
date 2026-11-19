@@ -117,6 +117,38 @@ export function ruleNeedsEntryBackfill(
   return rule.active && !entries.some((e) => e.ruleId === rule.id && e.date >= today);
 }
 
+/**
+ * Occurrences of an active rule in [today, endDate] that have no schedule
+ * entry yet (field report 2026-11-19).
+ *
+ * Entries used to be generated only when a rule was created or edited, or
+ * when it had NO upcoming entry at all, so the 14-day horizon never rolled
+ * forward and partial gaps (an edit that changed owners across several
+ * cells) were never filled: Thursday's 22:00 walk simply did not exist.
+ *
+ * A date counts as already covered when ANY entry exists for this dog at
+ * the rule's time, or when an entry of THIS rule exists on that date at
+ * another time (a one-off time change moves the entry, and must not bring
+ * the original slot back). Entries are never removed by the app on their
+ * own (walk deletions keep the entry), so an uncovered slot is a gap, not a
+ * deliberate deletion.
+ */
+export function missingRuleOccurrences(
+  rule: ScheduleRule,
+  entries: Pick<ScheduleEntry, 'ruleId' | 'dogId' | 'date' | 'time'>[],
+  today: string,
+  endDate: string,
+  idFactory?: () => string
+): ScheduleEntry[] {
+  if (!rule.active || rule.rotationUserIds.length === 0) return [];
+  const start = rule.rotationUserIds.length > 1 && rule.rotationAnchorDate > today ? rule.rotationAnchorDate : today;
+  const slotTaken = new Set(entries.filter((e) => e.dogId === rule.dogId).map((e) => `${e.date}|${e.time}`));
+  const ruleDates = new Set(entries.filter((e) => e.ruleId === rule.id).map((e) => e.date));
+  return generateRotationSchedule(rule, start, endDate, idFactory).filter(
+    (e) => !slotTaken.has(`${e.date}|${e.time}`) && !ruleDates.has(e.date)
+  );
+}
+
 export interface RuleDaysReconciliationPlan {
   /** Future entries for this rule whose date no longer matches the rule's (possibly patched) daysOfWeek. */
   toRemove: ScheduleEntry[];
