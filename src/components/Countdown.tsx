@@ -166,9 +166,13 @@ const styles = StyleSheet.create({
   compactWrapper: { alignItems: 'center', width: '100%' },
   compactRow: { width: '100%', justifyContent: 'space-between', alignItems: 'center' },
   compactLabelRow: { width: '100%', justifyContent: 'space-between', marginTop: 4 },
-  compactSegment: { fontSize: 20, minWidth: 34, backgroundColor: '#DDEFFC', borderRadius: 9, paddingVertical: 5, overflow: 'hidden' },
-  compactColon: { fontSize: 18, marginHorizontal: 0, color: '#17345B' },
-  compactLabel: { fontSize: 9, minWidth: 34 },
+  // Production report 2026-11-01: on a 390pt iPhone the three fixed 34pt
+  // boxes plus colons were wider than the Next-Walk card's countdown
+  // column, so the seconds box spilled past the card edge. In compact mode
+  // the boxes share the column's width instead of each insisting on 34pt.
+  compactSegment: { fontSize: 18, flex: 1, flexShrink: 1, minWidth: 0, backgroundColor: '#DDEFFC', borderRadius: 9, paddingVertical: 5, overflow: 'hidden' },
+  compactColon: { fontSize: 16, marginHorizontal: 1, color: '#17345B' },
+  compactLabel: { fontSize: 9, flex: 1, flexShrink: 1, minWidth: 0 },
   label: {
     fontSize: 10,
     color: colors.textSecondary,

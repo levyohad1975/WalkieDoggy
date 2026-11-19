@@ -8,7 +8,7 @@ const STORAGE_KEY = 'dog-walk-family:v3';
 function otherFamilySeed() {
   const family: Family = { id: 'family-other', name: 'משפחת לוי', createdAt: new Date().toISOString() };
   const users: FamilyUser[] = [
-    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
+    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() },
   ];
   const dog: Dog = { id: 'dog-other', familyId: family.id, name: 'ריקי', walksPerDay: 2 };
   return { family, users, dog };
@@ -67,6 +67,16 @@ describe('LocalRepository — family isolation', () => {
 
     const otherFamilyWalks = await repo.getWalks(otherFamily.id);
     expect(otherFamilyWalks).toEqual([otherWalk]);
+  });
+
+  it('clears only the confirmed deleted tenant cache and leaves another family cache alone', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers('family-main');
+    await repo.clearLocalFamilyCache('unrelated-family');
+    expect(await repo.getFamily('family-main')).toBeDefined();
+    await repo.clearLocalFamilyCache('family-main');
+    expect(await repo.getFamily('family-main')).toBe(DEMO_FAMILY);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue')).toBeNull();
   });
 });
 
@@ -381,7 +391,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'חדש',
       avatar: '🐶',
       color: '#123456',
-      remindersEnabled: false, gamificationEnabled: true,
+      remindersEnabled: false, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -417,7 +427,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'נוצר',
       avatar: '🐾',
       color: '#abcdef',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 

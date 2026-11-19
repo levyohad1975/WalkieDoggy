@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,9 +13,9 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { describeDogCutoutJob, runDogCutoutJob } from '../lib/dogCutoutJob';
 import {
   isSupabaseConfigured,
-  generateDogPhotoCutout,
   regenerateInviteCode,
   resetFamilyActivity,
   supabaseProjectUrl,
@@ -49,6 +49,7 @@ import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
 import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
+import { HelpCenterModal } from '../components/HelpCenterModal';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport';
 
@@ -63,7 +64,7 @@ export function SettingsScreen() {
 }
 
 function SettingsScreenContent() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setChatNotificationsEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
@@ -74,6 +75,7 @@ function SettingsScreenContent() {
   const signOut = useAuthStore((s) => s.signOut);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const requestOpenSystemAdmin = useSystemAdminStore((s) => s.requestOpen);
   const canShowSyncDiagnostics = isSupabaseConfigured && shouldShowStagingSyncDiagnostics(isSystemAdmin, supabaseProjectUrl);
   // Single source of truth for admin/member permissions — see authStore.
   // REAL role — deliberately NOT the effective/simulated one. This gates
@@ -119,6 +121,8 @@ function SettingsScreenContent() {
   const loadedAchievementFamilyId = useAchievementStore((s) => s.loadedFamilyId);
   const currentFamilyUnlocks = loadedAchievementFamilyId === familyId ? achievementUnlocks : [];
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
+  const [helpCenterVisible, setHelpCenterVisible] = useState(false);
+  const [helpCenterView, setHelpCenterView] = useState<'faq' | 'contact'>('faq');
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -223,6 +227,7 @@ function SettingsScreenContent() {
   // future re-add doesn't require touching that shared logic file again.
   const [pendingChildModal, setPendingChildModal] = useState<SettingsChildModal | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [processingDogCutout, setProcessingDogCutout] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
   const [regenerating, setRegenerating] = useState(false);
   // NARROW CLIENT-FLOW FIX ("switch user"): "החלף משתמש" is a real,
@@ -374,21 +379,51 @@ function SettingsScreenContent() {
         // itself is the single source of truth for whether Supabase is
         // configured; avoiding a second client-side environment gate prevents
         // deployed web builds from silently skipping the Edge Function call.
-        try {
-          await generateDogPhotoCutout(dog.id);
-          await loadFamily(familyId);
-        } catch (cutoutError) {
-          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
-          Alert.alert(
-            'התמונה נשמרה ללא הסרת רקע',
-            'התמונה המקורית נשמרה. לא הצלחנו להסיר את הרקע אוטומטית כרגע, ואפשר לנסות שוב בהחלפת התמונה.',
-          );
+        const cutoutResult = await runDogCutoutJob(dog.id);
+        if (cutoutResult.status === 'failed') {
+          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutResult.error);
+        } else {
+          await loadFamily(familyId).catch(() => {});
+        }
+        if (cutoutResult.status !== 'ready') {
+          // Never leave the outcome ambiguous: a cutout that kept the photo's
+          // background is stored but Home keeps the mascot, so say so.
+          const feedback = describeDogCutoutJob(cutoutResult);
+          Alert.alert('התמונה נשמרה ללא הסרת רקע', feedback.message);
         }
       }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Retry the existing source photo without opening the gallery or replacing it.
+  const retryDogCutout = async () => {
+    if (!dog?.photoUrl || processingDogCutout || uploadingPhoto || effectiveFamilyRole !== 'admin' || systemObserverActive) return;
+    setProcessingDogCutout(true);
+    try {
+      const result = await runDogCutoutJob(dog.id);
+      await loadFamily(familyId).catch(() => {});
+      const feedback = describeDogCutoutJob(result);
+      const message = result.status === 'ready'
+        ? 'הרקע הוסר. חזרו למסך הבית כדי לראות את התמונה המעודכנת.'
+        : feedback.message;
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert(result.status === 'ready' ? 'הסרת הרקע הושלמה' : 'לא הצלחנו להסיר רקע', message);
+      }
+    } catch (error) {
+      const message = friendlyErrorMessage(error) || 'לא הצלחנו להסיר את הרקע. נסו שוב מאוחר יותר.';
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert('שגיאה בהסרת הרקע', message);
+      }
+    } finally {
+      setProcessingDogCutout(false);
     }
   };
 
@@ -606,18 +641,15 @@ function SettingsScreenContent() {
     setSwitchTargetUserId(null);
   };
 
-  // PRD §16: "keep a clear support channel from within the app; the final
-  // support address should come from configuration, not be scattered in
-  // code." The row itself is hidden entirely (see the section below) when
-  // this isn't set — never a broken mailto: link to a placeholder.
-  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
-  const handleContactSupport = async () => {
-    if (!supportEmail) return;
-    try {
-      await Linking.openURL(`mailto:${supportEmail}`);
-    } catch {
-      Alert.alert('לא הצלחנו לפתוח את האימייל', `אפשר לפנות ידנית לכתובת ${supportEmail}.`);
-    }
+  // PRD §16: "keep a clear support channel from within the app". Owner
+  // request 2026-11-02: it opens the in-app "כתבו לנו" form (the request
+  // reaches the System Admin console with an email and a push, and the reply
+  // comes back in the app) instead of the mail app. The family management
+  // sheet closes first so the form is not hidden behind it.
+  const handleContactSupport = () => {
+    setManagementVisible(false);
+    setHelpCenterView('contact');
+    setHelpCenterVisible(true);
   };
 
   // PRD §16 pairs "תמיכה ויציאה" (support AND sign-out) in the same
@@ -759,41 +791,59 @@ function SettingsScreenContent() {
             before this reorganization — purely grouped and labeled, no
             admin/QA tools mixed in here (those stay their own separate
             "⚙️ ניהול" advanced area below). */}
+        {/* Settings redesign 2026-11-02: rows grouped by topic (the dog, the
+            family, notifications) in one card per topic with dividers, every
+            row with a one-line description, icons before the label. */}
+        {/* The dog card right above already names the dog, so this card has
+            no title of its own (a repeated "טופי" read as a duplicate). */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>👪 משפחה</RtlText>
-          <Pressable style={styles.hubRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>📤 שיתוף המשפחה</RtlText>
-          </Pressable>
-        </View>
-
-        <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <View style={styles.hubLabelWithMeta}>
-              <RtlText style={styles.hubLabel}>🔔 תזכורות והתראות</RtlText>
-              <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
-            </View>
-          </Pressable>
-        </View>
-
-        {dog ? (
-          <View style={styles.section}>
-            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+          <View style={styles.groupCard}>
+            {dog ? (
+              <>
+                <Pressable style={styles.groupRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+                  <RtlText style={styles.hubChevron}>‹</RtlText>
+                  <View style={styles.hubLabelWithMeta}>
+                    <RtlText style={styles.hubLabel}>🩺 בריאות וטיפוח</RtlText>
+                    <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+                  </View>
+                </Pressable>
+                <View style={styles.groupDivider} />
+              </>
+            ) : null}
+            <Pressable style={styles.groupRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
-                <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+                <RtlText style={styles.hubLabel}>🏆 הישגים</RtlText>
+                <RtlText style={styles.hubRowMeta}>{dog ? `תגים והישגים של ${dog.name}` : 'תגים והישגים מהטיולים'}</RtlText>
               </View>
             </Pressable>
           </View>
-        ) : null}
+        </View>
 
         <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>הישגים 🏆</RtlText>
-          </Pressable>
+          <RtlText style={styles.sectionTitle}>👨‍👩‍👧 משפחה</RtlText>
+          <View style={styles.groupCard}>
+            <Pressable style={styles.groupRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🔗 שיתוף המשפחה</RtlText>
+                <RtlText style={styles.hubRowMeta}>הזמנת בני משפחה וקוד הצטרפות</RtlText>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🔔 התראות</RtlText>
+          <View style={styles.groupCard}>
+            <Pressable style={styles.groupRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>⏰ תזכורות והתראות</RtlText>
+                <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
+              </View>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -806,18 +856,65 @@ function SettingsScreenContent() {
             about this app's behavior (see PrivacyAccessibilityInfoModal's
             own doc comment), not settings configured here, so this is a
             single small entry point rather than a toggle-filled section. */}
+        {/* Settings redesign 2026-11-02: privacy info and the tutorial share
+            one "help & privacy" card instead of two single-row sections. */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🔒 פרטיות ונגישות</RtlText>
+          <RtlText style={styles.sectionTitle}>❓ עזרה ופרטיות</RtlText>
+          <View style={styles.groupCard}>
           <Pressable
-            style={styles.hubRow}
+            style={styles.groupRow}
             onPress={() => setPrivacyAccessibilityModalVisible(true)}
             accessibilityRole="button"
             accessibilityLabel="פרטיות ו-GPS, נגישות ותנועה מופחתת"
           >
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🛰️ מיקום, GPS ונגישות</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>📍 מיקום, GPS ונגישות</RtlText>
+              <RtlText style={styles.hubRowMeta}>מה נשמר על המיקום, ותנועה מופחתת</RtlText>
+            </View>
           </Pressable>
+
+        {/* Help & Support replaced the tutorial-video row (no video was ever
+            recorded, so the row only opened a "coming soon" card). */}
+          <View style={styles.groupDivider} />
+          <Pressable
+            style={styles.groupRow}
+            onPress={() => { setHelpCenterView('faq'); setHelpCenterVisible(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="עזרה ותמיכה"
+            testID="settings-help-entry"
+          >
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>💬 עזרה ותמיכה</RtlText>
+              <RtlText style={styles.hubRowMeta}>שאלות נפוצות, חיפוש ופנייה אלינו</RtlText>
+            </View>
+          </Pressable>
+          </View>
         </View>
+
+        {/* Production report 2026-11-01: the hidden gesture on Home's header
+            dog did not open the console on the owner's iPhone. A plain row,
+            shown only when am_i_system_admin() said yes, is the dependable
+            way in; every console RPC is still re-authorized server-side. */}
+        {isSystemAdmin && !systemObserverActive ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>🛡️ מנהל מערכת</RtlText>
+            <Pressable
+              style={styles.hubRow}
+              onPress={requestOpenSystemAdmin}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת ניהול מערכת"
+              testID="settings-system-admin-entry"
+            >
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🖥️ מסוף הניהול</RtlText>
+                <RtlText style={styles.hubRowMeta}>כל המשפחות, יומנים וכלי בדיקה</RtlText>
+              </View>
+            </Pressable>
+          </View>
+        ) : null}
 
         {canShowSyncDiagnostics ? (
           <View style={styles.section}>
@@ -890,12 +987,12 @@ function SettingsScreenContent() {
 
         {familyRole === 'admin' ? (
           <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>🛠️ מתקדם</RtlText>
+            <RtlText style={styles.sectionTitle}>🛠️ מתקדם · למנהל המשפחה</RtlText>
             <Pressable style={styles.hubRow} onPress={() => setManagementVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול, למנהל בלבד">
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>⚙️ ניהול</RtlText>
-                <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
+                <RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>
+                <RtlText style={styles.hubRowMeta}>ניתוק המכשיר, פנייה לתמיכה ואיפוס נתונים</RtlText>
               </View>
             </Pressable>
           </View>
@@ -957,6 +1054,8 @@ function SettingsScreenContent() {
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
         onRemovePhoto={removeDogPhoto}
+        onRetryCutout={retryDogCutout}
+        processingCutout={processingDogCutout}
         onAddDog={() => void handleAddDog()}
         onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
         deletingDog={deletingDog}
@@ -993,12 +1092,15 @@ function SettingsScreenContent() {
         onClose={() => setPrivacyAccessibilityModalVisible(false)}
       />
 
+      <HelpCenterModal visible={helpCenterVisible} initialView={helpCenterView} onClose={() => setHelpCenterVisible(false)} />
+
       <RemindersModal
         visible={remindersModalVisible}
         users={users}
         effectiveFamilyRole={effectiveFamilyRole}
         effectiveUserId={effectiveUserId}
         onSetReminderEnabled={setReminderEnabled}
+        onSetChatNotificationsEnabled={setChatNotificationsEnabled}
         onClose={() => setRemindersModalVisible(false)}
       />
 
@@ -1028,7 +1130,7 @@ function SettingsScreenContent() {
         <Pressable style={styles.backdrop} onPress={() => setManagementVisible(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.sheetScroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title} accessibilityRole="header">⚙️ ניהול</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">⚙️ ניהול המשפחה</RtlText>
 
               {/*
                 BATCH 3 (Task 1): "👥 מי משתמש במערכת" removed from here —
@@ -1038,21 +1140,17 @@ function SettingsScreenContent() {
                 activity loading, sourced from the same
                 adminListFamilyActivity() RPC AdminActivityModal used).
               */}
-              {isSupabaseConfigured ? (
-                <Button label="📋 יומן פעילות" variant="secondary" onPress={() => openChildAfterManagementCloses('auditLog')} style={styles.addButton} />
-              ) : (
-                <RtlText style={styles.dogMeta}>יומן פעילות זמין רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
-              )}
-              {supportEmail ? (
-                <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={() => void handleContactSupport()} style={styles.addButton} />
-              ) : null}
+              {/* Owner decision 2026-11-02: activity logs are for the System
+                  Admin only (console → "📋 יומן פעילות"); the server no longer
+                  lets a family admin read them. */}
+              <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={handleContactSupport} style={styles.addButton} />
               <Button label="🚪 ניתוק המכשיר" variant="secondary" onPress={handleSignOut} style={styles.addButton} />
 
               {isSupabaseConfigured && !systemObserverActive ? (
                 <View style={styles.dangerZone}>
                   <RtlText style={styles.dangerTitle}>איפוס נתוני פעילות</RtlText>
                   <RtlText style={styles.dangerText}>מוחק לצמיתות טיולים, היסטוריה ונתוני GPS. המשפחה, הכלבים, בני המשפחה והגדרת הלו״ז נשמרים.</RtlText>
-                  <Button label={resettingActivity ? 'מאפס נתונים…' : '🗑️ איפוס נתונים'} variant="secondary" onPress={confirmFamilyActivityReset} disabled={resettingActivity} style={styles.addButton} />
+                  <Button label={resettingActivity ? 'מאפס נתונים…' : '🗑️ איפוס נתונים'} variant="danger" onPress={confirmFamilyActivityReset} disabled={resettingActivity} style={styles.addButton} />
                 </View>
               ) : null}
 
@@ -1068,7 +1166,9 @@ function SettingsScreenContent() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: 128 },
+  // paddingTop is smaller than the sides: SafeAreaView already clears the
+  // status bar, and the extra gap above the title wasted a row on phones.
+  content: { padding: spacing.xl, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: 128 },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
@@ -1106,6 +1206,10 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   hubLabel: { flex: 1, ...typography.body, fontSize: 16, color: colors.textPrimary, textAlign: 'right' },
+  // One card per topic with dividers between its rows (iOS grouped list).
+  groupCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: 'hidden' },
+  groupRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 60 },
+  groupDivider: { height: 1, backgroundColor: colors.border, marginRight: spacing.lg },
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
   hubRowMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   hubChevron: { fontSize: 20, color: colors.textSecondary, writingDirection: 'ltr' }, // RTL: chevron points left toward the row's leading (right) edge

@@ -61,6 +61,56 @@ describe('lib/supabase — session, PIN claim, QA sandbox, whoami, impersonation
       expect(signInAnonymously).toHaveBeenCalledTimes(1);
     });
 
+    describe('never replaces a saved session that failed to refresh (Production 2026-11-03)', () => {
+      const STORAGE_KEY = 'sb-example-auth-token';
+      afterEach(() => jest.useRealTimers());
+
+      it('keeps retrying and then fails, instead of signing in anonymously over it', async () => {
+        jest.useFakeTimers();
+        const getSession = jest.fn().mockResolvedValue({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Load failed' } });
+        const { signInAnonymously } = mockSupabaseClient({ getSession });
+        const AsyncStorage = require('@react-native-async-storage/async-storage');
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ access_token: 'old', refresh_token: 'rt-admin', user: { id: 'admin' } }));
+        const { ensureAnonymousSession } = require('../supabase');
+
+        const result = ensureAnonymousSession().then(() => 'resolved', (e: Error) => e.name);
+        await jest.advanceTimersByTimeAsync(10_000);
+        await expect(result).resolves.toBe('SavedSessionUnavailableError');
+        expect(getSession).toHaveBeenCalledTimes(3);
+        expect(signInAnonymously).not.toHaveBeenCalled();
+        await expect(AsyncStorage.getItem(STORAGE_KEY)).resolves.toContain('rt-admin');
+      });
+
+      it('recovers when a retry succeeds', async () => {
+        jest.useFakeTimers();
+        const getSession = jest.fn()
+          .mockResolvedValueOnce({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Load failed' } })
+          .mockResolvedValue({ data: { session: { access_token: 'new', user: { id: 'admin' } } }, error: null });
+        const { signInAnonymously } = mockSupabaseClient({ getSession });
+        const { ensureAnonymousSession, getCurrentSupabaseAuthUserId } = require('../supabase');
+
+        const result = ensureAnonymousSession();
+        await jest.advanceTimersByTimeAsync(2_000);
+        await expect(result).resolves.toBeUndefined();
+        expect(signInAnonymously).not.toHaveBeenCalled();
+        expect(getCurrentSupabaseAuthUserId()).toBe('admin');
+      });
+
+      it('signs in anonymously once the server definitively rejected the saved token (supabase-js removed it)', async () => {
+        jest.useFakeTimers();
+        const getSession = jest.fn()
+          .mockResolvedValueOnce({ data: { session: null }, error: { name: 'AuthApiError', message: 'Invalid Refresh Token: Refresh Token Not Found' } })
+          .mockResolvedValue({ data: { session: null }, error: null });
+        const { signInAnonymously } = mockSupabaseClient({ getSession });
+        const { ensureAnonymousSession } = require('../supabase');
+
+        const result = ensureAnonymousSession();
+        await jest.advanceTimersByTimeAsync(2_000);
+        await expect(result).resolves.toBeUndefined();
+        expect(signInAnonymously).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('rejects when anonymous sign-in fails', async () => {
       mockSupabaseClient({
         signInAnonymously: jest.fn().mockResolvedValue({ error: { message: 'anon sign-in disabled' } }),

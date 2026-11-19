@@ -30,7 +30,8 @@ import { consumePendingChatOpen, subscribeToChatOpens } from '../notifications/c
 
 export type RootTabParamList = {
   Home: undefined;
-  Schedule: undefined;
+  /** `range: 'routine'` opens "ניהול שגרה" (routine change requests, 2026-11-10). */
+  Schedule: { range?: 'routine' } | undefined;
   Chat: undefined;
   Family: undefined;
   History: undefined;
@@ -302,7 +303,7 @@ export function RootNavigator() {
       // Open the conversation the notification was about (the store waits
       // for the list if it has not loaded yet, and ignores an id this
       // profile cannot see).
-      useChatStore.getState().requestOpenConversation(event.conversationId);
+      useChatStore.getState().requestOpenConversation(event.conversationId, event.messageId);
       if (navigationRef.isReady()) {
         navigationRef.navigate('Chat');
       } else {

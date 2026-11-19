@@ -145,9 +145,9 @@ describe('pickAndUploadImage — web crop step (PRD §12)', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('blob:cropped-uri');
     expect(fromMock).toHaveBeenCalledWith('family-photos');
-    expect(uploadMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg', expect.any(ArrayBuffer), {
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.jpg$/), expect.any(ArrayBuffer), {
       contentType: 'image/jpeg',
-      upsert: true,
+      upsert: false,
     });
   });
 });

@@ -212,6 +212,29 @@ describe('familyStore — updateUser', () => {
     spy.mockRestore();
   });
 
+  it('routes a changed profile photo through server-confirmed persistence', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [user] = useFamilyStore.getState().users;
+    const strictWrite = jest.spyOn(repository, 'updateUserProfile').mockResolvedValue(undefined);
+    const queuedWrite = jest.spyOn(repository, 'upsertUser');
+    const updated = { ...user, photoUrl: 'https://cdn.example/member.jpg' };
+
+    await useFamilyStore.getState().updateUser(updated);
+
+    expect(strictWrite).toHaveBeenCalledWith(updated);
+    expect(queuedWrite).not.toHaveBeenCalled();
+    expect(useFamilyStore.getState().users.find((candidate: any) => candidate.id === user.id)?.photoUrl)
+      .toBe('https://cdn.example/member.jpg');
+
+    strictWrite.mockRestore();
+    queuedWrite.mockRestore();
+  });
+
   it('rolls back to the previous users list and sets a friendly actionError when the repository call fails', async () => {
     const AsyncStorage = require('@react-native-async-storage/async-storage');
     await AsyncStorage.clear();

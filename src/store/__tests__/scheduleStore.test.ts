@@ -42,7 +42,10 @@ describe('scheduleStore', () => {
       id: 'rule-test-0900',
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
-      time: '09:00',
+      // 18:00 is after the fake "now" (10:00) so today's slot is still ahead of
+      // the rule's createdAt — exercising normal generation, not the onboarding
+      // past-slot gate (covered by scheduleStore.onboardingNoPastWalks.test.ts).
+      time: '18:00',
       label: 'טיול בדיקה',
       daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
       rotationUserIds: ['user-aba', 'user-ima'],
@@ -704,6 +707,23 @@ it('editDoneDetails updates a resolved walk\'s recorded details', async () => {
   expect(updated?.status).toBe('done'); // unaffected by the edit
 });
 
+it('editDoneDetails persists an edit through the dedicated edit path, never saveWalk (field report 2026-11-05)', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const editSpy = jest.spyOn(repository, 'editResolvedWalkDetails');
+  const saveSpy = jest.spyOn(repository, 'saveWalk');
+
+  await useScheduleStore.getState().editDoneDetails('walk-0700', { note: 'x', hadPee: true, peeCount: 3 });
+
+  // saveWalk()'s done-branch only matches a still-'pending' row, so editing a
+  // resolved walk must go through editResolvedWalkDetails (update by id).
+  expect(editSpy).toHaveBeenCalledTimes(1);
+  expect(editSpy.mock.calls[0][0]).toMatchObject({ id: 'walk-0700', note: 'x', peeCount: 3 });
+  expect(saveSpy).not.toHaveBeenCalled();
+  editSpy.mockRestore();
+  saveSpy.mockRestore();
+});
+
 it('editDoneDetails refuses (visible actionError) for a walk that is still pending', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
   const pendingWalk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230');
@@ -912,14 +932,18 @@ it('updateRule with a time-only change (daysOfWeek untouched) does not resurrect
   expect(state.entries.some((e) => e.ruleId === 'rule-1700' && e.date === entryFor1700!.date)).toBe(false);
 });
 
-it('skip refuses (visible actionError) for a walk that is not pending', async () => {
+it('skip is a quiet no-op (no error, no change) for a walk that is no longer pending', async () => {
+  // Field report 2026-11-05: the ✕ "לא בוצע" affordance is only offered for a
+  // pending overdue walk; a walk already resolved on another device between
+  // render and tap must not raise "אפשר לדלג רק על טיול שממתין". It is simply
+  // left as-is and the caller refreshes.
   await useScheduleStore.getState().load(FAMILY_ID);
   expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
 
   await useScheduleStore.getState().skip('walk-0700');
 
   const state = useScheduleStore.getState();
-  expect(state.actionError).toBeTruthy();
+  expect(state.actionError).toBeNull();
   expect(state.walks.find((w) => w.id === 'walk-0700')?.status).toBe('done'); // untouched
 });
 

@@ -259,7 +259,19 @@ Deno.serve(async (req: Request) => {
             })
           );
           for (const result of results) {
-            if (result.status === 'rejected') deliveryErrors.push(`web: ${String(result.reason)}`);
+            if (result.status !== 'rejected') continue;
+            // The push service's own status and reason (e.g. Apple's
+            // {"reason":"BadJwtToken"}) are what make a failure diagnosable;
+            // neither contains message text or subscription keys.
+            const reason: any = result.reason;
+            const statusCode = reason?.statusCode ?? reason?.status ?? null;
+            const serviceBody = typeof reason?.body === 'string' ? reason.body.slice(0, 200) : '';
+            deliveryErrors.push(`web: ${String(reason)}${statusCode ? ` [${statusCode}]` : ''}${serviceBody ? ` ${serviceBody}` : ''}`);
+          }
+          if (deliveryErrors.length > 0) {
+            // Public key prefix only, to compare with the client's
+            // EXPO_PUBLIC_VAPID_PUBLIC_KEY; the private key is never logged.
+            console.error('Web push VAPID context', { publicKeyPrefix: VAPID_PUBLIC_KEY.slice(0, 12), subject: VAPID_SUBJECT });
           }
         }
       }

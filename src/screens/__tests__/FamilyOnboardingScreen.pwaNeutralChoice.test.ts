@@ -1,55 +1,34 @@
 import fs from 'fs';
 
 /**
- * FIX (Phase 1B): an installed-PWA launch (standalone display-mode / iOS
- * navigator.standalone) is ambiguous -- it's exactly as true for a
- * returning device reopening the home-screen icon as for a brand-new
- * install that just added the icon during setup. There is no reliable
- * synchronous client-side signal to distinguish them (even a brand-new
- * device already has an anonymous Supabase session by the time this
- * screen renders). The screen previously defaulted every installed-PWA
- * launch straight into 'recover' mode, silently assuming "returning" for
- * every case including first-time installs -- flagged in the Phase 1A
- * Integration Evidence Report as a real, untested UX misfire and
- * explicitly deferred rather than risking a blind rewrite of this
- * security/UX-sensitive onboarding logic.
- *
- * This proves the fix: an installed-PWA launch now lands on a neutral
- * 'pwaChoice' screen offering three equal-weight options -- "המשפחה שלי
- * כבר קיימת" (recover), "יש לי הזמנה" (redeem), "יצירת משפחה חדשה"
- * (create) -- and every "back" action from the flows it leads into
- * returns to that same neutral screen for a PWA device, never assuming
- * the generic (non-PWA) two-hotspot choose screen.
+ * Owner request 2026-11-03 (replaces the four-button neutral "pwaChoice"
+ * screen, whose "המשפחה שלי כבר קיימת" and "הצטרפות למשפחה קיימת" looked
+ * alike and confused family members): opening the home-screen shortcut
+ * with no family starts on ONE clear screen — join with a code or link,
+ * with a paste button — and only two quiet text links below it, for the
+ * family admin's email sign-in and for creating a new family.
  * Source-scan convention: this repo has no render-test harness for screens.
  */
-describe('FamilyOnboardingScreen offers a neutral choice for installed-PWA launches (structural)', () => {
+describe('FamilyOnboardingScreen starts the home-screen shortcut on the join screen (structural)', () => {
   const source = fs.readFileSync(require.resolve('../FamilyOnboardingScreen'), 'utf8').replace(/\r\n/g, '\n');
 
-  it('defaults an installed-PWA launch to pwaChoice, not recover — unless a valid invite/join link is already present (see FamilyOnboardingScreen.inviteLaunchRouting.test.ts), in which case that takes precedence over this ambiguity entirely', () => {
-    expect(source).toMatch(
-      /useState<Mode>\(\s*initialInviteToken \? 'redeem' : initialJoinCode \? 'join' : isInstalledWebApp \? 'pwaChoice' : 'choose'\s*\)/
-    );
+  it('the installed web app starts on join; a browser starts on the welcome screen', () => {
+    expect(source).toContain("const startMode: Mode = isInstalledWebApp ? 'join' : 'choose';");
+    expect(source).not.toContain('pwaChoice');
   });
 
-  it('renders a pwaChoice branch offering all three onward modes', () => {
-    const blockStart = source.indexOf("mode === 'pwaChoice'");
-    const blockEnd = source.indexOf("mode === 'recover'");
-    expect(blockStart).toBeGreaterThan(-1);
-    expect(blockEnd).toBeGreaterThan(blockStart);
-    const block = source.slice(blockStart, blockEnd);
-    expect(block).toMatch(/setMode\('recover'\)/);
-    expect(block).toMatch(/setMode\('redeem'\)/);
-    expect(block).toMatch(/setMode\('create'\)/);
-    // Neutral: no option should read as the assumed/default path -- all
-    // three are the same button variant.
-    expect(block.match(/variant="secondary"/g)?.length).toBe(3);
+  it('the join screen offers paste, accepts a personal invite link too, and links to admin sign-in and create', () => {
+    const joinStart = source.indexOf('// mode === \'join\'');
+    expect(joinStart).toBeGreaterThan(-1);
+    const join = source.slice(joinStart);
+    expect(join).toContain('label="📋 הדבקה" onPress={() => void pasteJoinText()}');
+    expect(join).toContain("onPress={() => setMode('recover')}");
+    expect(join).toContain("onPress={() => setMode('create')}");
+    expect(source).toMatch(/if \(\/\[\?&\]invite=\/\.test\(value\) && parseInviteInput\(value\)\) \{\s*setRedeemInput\(value\);\s*setMode\('redeem'\);/);
   });
 
-  it('every "back to start" action is PWA-aware, not a hardcoded choose', () => {
-    const backActions = source.match(/setMode\(('choose'|isInstalledWebApp \? 'pwaChoice' : 'choose')\)/g) ?? [];
-    expect(backActions.length).toBeGreaterThan(0);
-    for (const action of backActions) {
-      expect(action).toBe("setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')");
-    }
+  it('every "back to start" action returns to this device\'s start screen', () => {
+    expect(source).not.toMatch(/setMode\(isInstalledWebApp \?/);
+    expect((source.match(/setMode\(startMode\)/g) ?? []).length).toBeGreaterThan(3);
   });
 });

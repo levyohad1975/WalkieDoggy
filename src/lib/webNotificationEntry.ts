@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { publishReminderOpen, reminderOpenFromNotificationData } from '../notifications/reminderEntry';
 import { publishRequestOpen, requestOpenFromNotificationData } from '../notifications/requestEntry';
 import { chatOpenFromNotificationData, publishChatOpen } from '../notifications/chatEntry';
+import { acknowledgeWalkLifecycleOpen, walkLifecycleOpenFromNotificationData } from '../notifications/walkLifecycleEntry';
 
 /**
  * Mascot-notification-experiences round — the web (PWA) counterpart to
@@ -23,6 +24,8 @@ import { chatOpenFromNotificationData, publishChatOpen } from '../notifications/
  * initialInviteToken/initialJoinCode) for the cold-launch URL-param case.
  */
 function dispatch(data: unknown): void {
+  const lifecycleEvent = walkLifecycleOpenFromNotificationData(data);
+  if (lifecycleEvent) void acknowledgeWalkLifecycleOpen(lifecycleEvent);
   const reminderEvent = reminderOpenFromNotificationData(data);
   if (reminderEvent) {
     publishReminderOpen(reminderEvent);
@@ -45,7 +48,9 @@ export function consumeInitialWebNotificationParam(): void {
   try {
     const raw = new URLSearchParams(window.location.search).get('notif');
     if (!raw) return;
-    const data = JSON.parse(decodeURIComponent(raw));
+    // URLSearchParams already percent-decodes the value. Decoding it again
+    // corrupts valid JSON strings containing literal percent sequences.
+    const data = JSON.parse(raw);
     dispatch(data);
   } catch {
     // Malformed/foreign query param — never let a bad URL break Home.

@@ -284,3 +284,63 @@ export function applyMessageToConversations(
   copy[index] = next;
   return sortChatConversations(copy);
 }
+
+// ---------- Reactions (owner request 2026-11-12, "like WhatsApp") ----------
+
+/** The six reactions, in picker order. Must match the database check (migration 20261112150100). */
+export const CHAT_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'] as const;
+
+/** userId -> emoji, per message id. */
+export type ChatReactionsByMessage = Record<string, Record<string, string>>;
+
+/**
+ * Folds reaction rows into the per-message map. A row only replaces what is
+ * held for that person when it is at least as new, so a late Realtime echo or
+ * an older page never undoes a newer change; emoji null removes the person.
+ */
+export function applyChatReactions(
+  current: ChatReactionsByMessage,
+  rows: Array<{ messageId: string; userId: string; emoji: string | null; updatedAt: string }>,
+  stamps: Map<string, string>,
+): ChatReactionsByMessage {
+  let next = current;
+  for (const row of rows) {
+    const key = `${row.messageId}|${row.userId}`;
+    const seen = stamps.get(key);
+    if (seen && seen > row.updatedAt) continue;
+    stamps.set(key, row.updatedAt);
+    const forMessage = { ...(next[row.messageId] ?? {}) };
+    if (row.emoji) forMessage[row.userId] = row.emoji;
+    else delete forMessage[row.userId];
+    next = { ...next, [row.messageId]: forMessage };
+  }
+  return next;
+}
+
+export interface ChatReactionSummary {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  userIds: string[];
+}
+
+/** Chips under a bubble: one per emoji, most used first (picker order breaks ties). */
+export function summarizeChatReactions(byUser: Record<string, string> | undefined, viewerId: string): ChatReactionSummary[] {
+  if (!byUser) return [];
+  const groups = new Map<string, string[]>();
+  for (const [userId, emoji] of Object.entries(byUser)) {
+    groups.set(emoji, [...(groups.get(emoji) ?? []), userId]);
+  }
+  const order = (emoji: string) => {
+    const i = (CHAT_REACTIONS as readonly string[]).indexOf(emoji);
+    return i === -1 ? CHAT_REACTIONS.length : i;
+  };
+  return [...groups.entries()]
+    .map(([emoji, userIds]) => ({ emoji, count: userIds.length, mine: userIds.includes(viewerId), userIds }))
+    .sort((a, b) => b.count - a.count || order(a.emoji) - order(b.emoji));
+}
+
+/** Tapping an emoji: the same one again removes it, another one replaces it. */
+export function nextChatReaction(current: string | undefined, tapped: string): string | null {
+  return current === tapped ? null : tapped;
+}

@@ -50,27 +50,28 @@ self.addEventListener('notificationclick', (event) => {
       type: 'window',
       includeUncontrolled: true,
     }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          const focused = client.focus();
-          if (data && 'postMessage' in client) {
-            client.postMessage({ source: 'walkie-notification-click', data });
-          }
-          return focused;
+      let targetUrl = '/';
+      if (data && typeof data === 'object') {
+        try {
+          targetUrl += '?notif=' + encodeURIComponent(JSON.stringify(data));
+        } catch {
+          // Invalid notification data falls back to opening the app normally.
         }
       }
 
-      if (clients.openWindow) {
-        if (data) {
-          try {
-            const url = '/?notif=' + encodeURIComponent(JSON.stringify(data));
-            return clients.openWindow(url);
-          } catch {
-            // Fall through to the plain-open fallback below.
-          }
-        }
-        return clients.openWindow('/');
+      // `postMessage` alone is lossy when an installed PWA is resuming: its
+      // React listener may not exist yet. Navigate the app client with the
+      // notification payload so startup and background-resume use one path.
+      const client = clientList.find((candidate) => candidate.url.startsWith(self.location.origin));
+      if (client && 'navigate' in client) {
+        const notificationUrl = new URL(targetUrl, self.location.origin).href;
+        return client.navigate(notificationUrl).then((navigated) => {
+          if (navigated && 'focus' in navigated) return navigated.focus();
+          return clients.openWindow ? clients.openWindow(notificationUrl) : client.focus();
+        }).catch(() => clients.openWindow ? clients.openWindow(notificationUrl) : client.focus());
       }
+
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });

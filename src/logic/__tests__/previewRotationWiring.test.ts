@@ -19,7 +19,10 @@ import path from 'path';
  * multi-member rule saved before this fix).
  */
 describe('previewRotation wiring', () => {
-  const cases: Array<[file: string]> = [['../../screens/ScheduleScreen.tsx']];
+  // 2026-11-09: the rule rows became the weekly RoutineGrid; a legacy
+  // multi-member rule shows there as a "🔄 בתורות" cell whose spoken label
+  // previews the rotation.
+  const cases: Array<[file: string]> = [['../../components/RoutineGrid.tsx']];
 
   it.each(cases)('%s imports previewRotation from logic/rotation', (file) => {
     const source = fs.readFileSync(path.resolve(__dirname, file), 'utf8');

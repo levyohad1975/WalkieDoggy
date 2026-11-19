@@ -16,6 +16,15 @@
         height: 100%;
         margin: 0;
         background: #FFF8E8;
+        /* iOS treats two quick taps as a zoom gesture and swallows their
+           clicks, which broke repeated taps (e.g. the System Admin triple
+           tap on the header dog). Pinch-zoom stays available. */
+        touch-action: manipulation;
+      }
+      /* touch-action is not inherited past scroll containers, so tappable
+         controls get it directly as well. */
+      [role="button"] {
+        touch-action: manipulation;
       }
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {
@@ -27,7 +36,55 @@
         height: 100%;
         flex: 1;
       }
+      /* Installed iPhone app (home-screen PWA): with the translucent status
+         bar, iOS sizes the layout viewport WITHOUT the status-bar area, so
+         `height: 100%` ends that many points above the bottom of the screen
+         and the tab bar floats over an empty strip. --app-height is set by
+         the script below to the real screen height in that case only. */
+      html.ios-standalone,
+      html.ios-standalone body,
+      html.ios-standalone #root {
+        height: var(--app-height, 100%);
+      }
+      /* With the translucent status bar, scrolled content slid under the
+         clock/battery and read as a broken, cut-off screen (Production
+         report 2026-11-01, active walk). A fixed strip the height of the
+         status bar keeps content visually below it. Taps are unaffected. */
+      html.ios-standalone body::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: env(safe-area-inset-top, 0px);
+        background: rgba(251, 248, 243, 0.94);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        z-index: 2147483000;
+        pointer-events: none;
+      }
     </style>
+    <script>
+      (function () {
+        var nav = window.navigator;
+        // navigator.standalone exists only on iOS/iPadOS WebKit and is true
+        // only when launched from the home screen. Browser tabs are untouched.
+        if (!nav || nav.standalone !== true || !window.screen) return;
+        var root = document.documentElement;
+        root.classList.add('ios-standalone');
+        function fit() {
+          var s = window.screen;
+          var landscape = window.innerWidth > window.innerHeight;
+          var full = landscape ? Math.min(s.width, s.height) : Math.max(s.width, s.height);
+          // Never shrink below what iOS reports; only fill the missing strip.
+          var h = Math.max(window.innerHeight || 0, root.clientHeight || 0, full || 0);
+          root.style.setProperty('--app-height', h + 'px');
+        }
+        fit();
+        window.addEventListener('resize', fit);
+        window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
+      })();
+    </script>
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
   </head>

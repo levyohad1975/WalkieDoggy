@@ -7,6 +7,39 @@ import { requestPhotoCrop } from './photoCropHost';
 export type PhotoKind = 'dogs' | 'users';
 export type PhotoPreviewListener = (uri: string | null) => void;
 
+/** Remove only a freshly uploaded object that belongs to this photo target. */
+export async function removeUploadedFamilyPhoto(
+  photoUrl: string,
+  familyId: string,
+  kind: PhotoKind,
+  id: string,
+): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const expectedFolder = kind === 'dogs' ? `${familyId}/dog/` : `${familyId}/users/${id}/`;
+  let objectPath: string;
+  try {
+    const url = new URL(photoUrl);
+    const publicPrefix = '/storage/v1/object/public/family-photos/';
+    if (!url.pathname.startsWith(publicPrefix)) return;
+    objectPath = decodeURIComponent(url.pathname.slice(publicPrefix.length));
+  } catch {
+    return;
+  }
+
+  // A caller may only remove the fresh object under the exact family and
+  // profile folder it just uploaded to. Storage RLS remains the authority.
+  if (!objectPath.startsWith(expectedFolder) || objectPath.slice(expectedFolder.length).includes('/')) return;
+  const { error } = await supabase.storage.from('family-photos').remove([objectPath]);
+  if (error) throw error;
+}
+
+function newPhotoFileName(extension: string): string {
+  // The timestamp provides useful ordering; the suffix prevents two quick
+  // taps/devices from ever targeting the same object. Uploads are insert-only.
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+}
+
 /**
  * Opens the device photo library, and — if Supabase Storage is configured —
  * uploads the picked image to the `family-photos` bucket, returning a public
@@ -111,7 +144,7 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
 
   if (isSupabaseConfigured && supabase) {
     const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
-    const path = `${familyId}/${folder}/${Date.now()}.jpg`;
+    const path = `${familyId}/${folder}/${newPhotoFileName('jpg')}`;
     // SDK 57 / iOS does not guarantee ImagePicker base64 payloads. Read the
     // selected local URI as binary instead, which works for both iOS and
     // Android and avoids silently falling back to a device-only file URI.
@@ -124,7 +157,7 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
     const finalPath = path.replace(/\.jpg$/, `.${extension}`);
     const { error } = await supabase.storage
       .from('family-photos')
-      .upload(finalPath, bytes, { contentType, upsert: true });
+      .upload(finalPath, bytes, { contentType, upsert: false });
     if (error) throw error;
     const { data } = supabase.storage.from('family-photos').getPublicUrl(finalPath);
     onPreview?.(data.publicUrl);
@@ -161,13 +194,13 @@ export async function takeAndUploadImage(kind: PhotoKind, familyId: string, id: 
   }
   if (isSupabaseConfigured && supabase) {
     const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
-    const path = `${familyId}/${folder}/${Date.now()}.jpg`;
+    const path = `${familyId}/${folder}/${newPhotoFileName('jpg')}`;
     const response = await fetch(sourceUri);
     const bytes = await response.arrayBuffer();
     const contentType = webCropped ? 'image/jpeg' : asset.mimeType ?? 'image/jpeg';
     const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
     const finalPath = path.replace(/\.jpg$/, `.${extension}`);
-    const { error } = await supabase.storage.from('family-photos').upload(finalPath, bytes, { contentType, upsert: true });
+    const { error } = await supabase.storage.from('family-photos').upload(finalPath, bytes, { contentType, upsert: false });
     if (error) throw error;
     return supabase.storage.from('family-photos').getPublicUrl(finalPath).data.publicUrl;
   }

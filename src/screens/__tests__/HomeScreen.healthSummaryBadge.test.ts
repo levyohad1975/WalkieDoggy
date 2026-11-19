@@ -35,7 +35,7 @@ describe('HomeScreen surfaces a Health & Grooming summary badge (structural)', (
 
   it('never renders a second full task list here — only the one-line pill text', () => {
     const blockStart = source.indexOf('healthSummary.overdueCount + healthSummary.dueSoonCount > 0 ?');
-    const blockEnd = source.indexOf("{actualFamilyRole === 'admin' && activeSpontaneousWalks", blockStart);
+    const blockEnd = source.indexOf('<View ref={nextWalkCardRef}', blockStart);
     const block = source.slice(blockStart, blockEnd);
     expect(block).not.toMatch(/\.map\(/);
   });

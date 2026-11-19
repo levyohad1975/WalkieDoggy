@@ -10,7 +10,7 @@ import { rawMessageOf } from './errorMessages';
 import { createLocalChatTransport } from './chatLocal';
 import { CHAT_ATTACHMENT_BUCKET, ChatUploadCancelledError } from '../logic/chatImages';
 import { chatImageUploadBody, type PreparedChatImage } from './chatImages';
-import type { ChatAttachment, ChatConversationState, ChatLastMessage, ChatMessage } from '../types';
+import type { ChatAttachment, ChatConversationState, ChatLastMessage, ChatMessage, ChatReaction } from '../types';
 
 /**
  * Chat transport (migrations 0108_family_chat.sql and
@@ -37,6 +37,8 @@ export interface ChatSubscriptionHandlers {
   onMessage: (message: ChatMessage) => void;
   /** A conversation history was cleared for this profile on another device. */
   onConversationCleared: (conversationId: string, clearedAt: string) => void;
+  /** Someone reacted to (or un-reacted) a message the caller can read. */
+  onReaction?: (reaction: ChatReaction) => void;
   onStatus: (status: ChatLiveStatus) => void;
 }
 
@@ -82,6 +84,10 @@ export interface ChatTransport {
   subscribe(handlers: ChatSubscriptionHandlers): () => void;
   /** Best-effort push trigger for a message this device just sent. Never throws. */
   notify(messageId: string): Promise<void>;
+  /** Current reactions to these messages (rows with a reaction only). Optional: not every backend has them. */
+  listReactions?(conversationId: string, messageIds: string[]): Promise<ChatReaction[]>;
+  /** Sets (or with null removes) the caller's reaction to a message. */
+  setReaction?(messageId: string, emoji: string | null): Promise<ChatReaction>;
 
   /** Uploads the image to `path`. Resolves as soon as the file exists there (including when it already did). */
   uploadAttachment(path: string, image: PreparedChatImage, onProgress: (fraction: number) => void): ChatUploadHandle;
@@ -167,6 +173,24 @@ export function chatMessageFromRow(row: ChatMessageRow): ChatMessage {
     deletedByUserId: row.deleted_by_user_id ?? undefined,
     attachment: attachmentFromRow(row),
     delivery: 'sent',
+  };
+}
+
+interface ChatReactionRow {
+  message_id: string;
+  conversation_id: string;
+  user_id: string;
+  emoji: string | null;
+  updated_at: string;
+}
+
+export function chatReactionFromRow(row: ChatReactionRow): ChatReaction {
+  return {
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    userId: row.user_id,
+    emoji: row.emoji ?? null,
+    updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
@@ -431,6 +455,20 @@ export const supabaseChatTransport: ChatTransport = {
           }
         }
       );
+      if (handlers.onReaction) {
+        const onReaction = handlers.onReaction;
+        const deliverReaction = (payload: { new?: unknown }) => {
+          if (closed) return;
+          const row = payload?.new as ChatReactionRow | undefined;
+          if (!row?.message_id || !row.user_id || !row.conversation_id) return;
+          onReaction(chatReactionFromRow(row));
+        };
+        // Reactions are never deleted, only set to null, so INSERT + UPDATE
+        // (both filtered by the table's SELECT policy) carry every change.
+        const reactions = { schema: 'public', table: 'chat_message_reactions' };
+        channel.on('postgres_changes' as any, { event: 'INSERT', ...reactions }, deliverReaction);
+        channel.on('postgres_changes' as any, { event: 'UPDATE', ...reactions }, deliverReaction);
+      }
       channel.subscribe((status: string) => {
         if (closed) return;
         handlers.onStatus(status === 'SUBSCRIBED' ? 'live' : 'reconnecting');
@@ -447,6 +485,27 @@ export const supabaseChatTransport: ChatTransport = {
       channel = null;
       if (current) client.removeChannel(current).catch(() => undefined);
     };
+  },
+
+  async listReactions(conversationId, messageIds) {
+    if (!messageIds.length) return [];
+    const { data, error } = await requireSupabase()
+      .from('chat_message_reactions')
+      .select('message_id, conversation_id, user_id, emoji, updated_at')
+      .eq('conversation_id', conversationId)
+      .in('message_id', messageIds)
+      .not('emoji', 'is', null);
+    if (error) throw error;
+    return ((data ?? []) as ChatReactionRow[]).map(chatReactionFromRow);
+  },
+
+  async setReaction(messageId, emoji) {
+    const { data, error } = await requireSupabase().rpc('chat_set_message_reaction', {
+      p_message_id: messageId,
+      p_emoji: emoji,
+    });
+    if (error) throw error;
+    return chatReactionFromRow(data as ChatReactionRow);
   },
 
   async notify(messageId) {

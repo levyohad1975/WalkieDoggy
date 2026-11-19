@@ -57,6 +57,8 @@ continuity layer on top of them, not new authority.
 
 ## Working rules
 
+0. Production web releases (walkielink.co.il) are built ONLY from the release branch `feat/walk-lifecycle-gps-v1-1`, and only from a commit that contains what production runs now. `scripts/release-guard.js` enforces both in the Vercel build (see `docs/engineering/RELEASING.md`). Never deploy production from another branch: merge into the release branch first.
+
 1. Work only inside this repository.
 2. Inspect relevant existing code before making changes.
 3. Preserve existing user changes. Never discard or overwrite unrelated uncommitted work.

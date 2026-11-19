@@ -10,6 +10,7 @@ import {
   summarizeWalksByUser,
   swapWalk,
   swapWalksMutual,
+  swappedFromUserId,
   undoMarkDone,
   walkCompletionLine,
   walkHistoryTimingLine,
@@ -45,6 +46,11 @@ describe('markWalkDone', () => {
     expect(done.hadPee).toBe(true);
     expect(done.hadPoop).toBe(false);
     expect(done.note).toBe('הכל טוב');
+  });
+
+  it('stores exact event counts and keeps legacy flags consistent with those counts', () => {
+    const done = markWalkDone(makeWalk(), 'yael', { peeCount: 3, poopCount: 0 });
+    expect(done).toMatchObject({ peeCount: 3, poopCount: 0, hadPee: true, hadPoop: false });
   });
 
   it('allows completedByUserId to differ from the originally responsible user', () => {
@@ -269,6 +275,16 @@ describe('isCurrentlySwapped ("הוחלף" must reflect current vs. original ass
     const toNoam = swapWalk(toYael, 'noam', 'yael');
     expect(isCurrentlySwapped(toNoam)).toBe(true);
     expect(toNoam.swap?.originalUserId).toBe('danny');
+  });
+});
+
+describe('swappedFromUserId (Home: "↔ במקום X" on a swapped walk)', () => {
+  it('names the original walker only while the walk is still swapped', () => {
+    const walk = makeWalk({ responsibleUserId: 'danny' });
+    expect(swappedFromUserId(walk)).toBeNull();
+    const toYael = swapWalk(walk, 'yael', 'danny');
+    expect(swappedFromUserId(toYael)).toBe('danny');
+    expect(swappedFromUserId(swapWalk(toYael, 'danny', 'yael'))).toBeNull();
   });
 });
 

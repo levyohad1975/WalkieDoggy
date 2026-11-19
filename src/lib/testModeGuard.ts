@@ -25,6 +25,17 @@ export const TEST_MODE_READ_ONLY_MESSAGE =
  * blocking this action. Silent (no repeated alerts) is deliberately NOT the
  * choice here — the person needs to understand why nothing happened.
  */
+/**
+ * Same decision as guardTestModeMutation(), without showing anything — for a
+ * caller that surfaces its own error (e.g. a delete flow that must report the
+ * block through a web-safe dialog instead of the no-op web Alert).
+ */
+export function testModeMutationBlockReason(): string | null {
+  if (useAuthStore.getState().systemObserverActive) return SYSTEM_OBSERVER_READ_ONLY_MESSAGE;
+  if (useAuthStore.getState().testModeUserId) return TEST_MODE_READ_ONLY_MESSAGE;
+  return null;
+}
+
 export function guardTestModeMutation(): boolean {
   if (useAuthStore.getState().systemObserverActive) {
     Alert.alert('צפייה נסתרת', SYSTEM_OBSERVER_READ_ONLY_MESSAGE);

@@ -61,3 +61,13 @@ verify_jwt = false
 # same investigation). Declaring it here, like the two functions above,
 # makes it durable instead of dependent on remembering a CLI flag.
 verify_jwt = false
+
+[functions.system-admin-chat-attachment]
+# Only a verified, authenticated System Admin can request a private attachment;
+# the function also verifies the user token and calls the audited scope RPC.
+verify_jwt = true
+
+[functions.send-walk-lifecycle-notification]
+# Remote walk lifecycle delivery requires the initiating Family Admin's JWT;
+# the function also makes an actor-scoped RPC authorization check.
+verify_jwt = true

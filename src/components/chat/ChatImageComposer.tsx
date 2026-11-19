@@ -24,8 +24,9 @@ export function ChatAttachSheet({ visible, onPick, onClose }: ChatAttachSheetPro
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת בחירת תמונה">
-        <Pressable style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]} onPress={(e) => e.stopPropagation()}>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת בחירת תמונה" />
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
           <RtlText style={styles.title} accessibilityRole="header">שליחת תמונה</RtlText>
           <Pressable
             onPress={() => onPick('camera')}
@@ -46,8 +47,8 @@ export function ChatAttachSheet({ visible, onPick, onClose }: ChatAttachSheetPro
           <Pressable onPress={onClose} accessibilityRole="button" style={styles.cancel}>
             <RtlText style={styles.cancelText}>ביטול</RtlText>
           </Pressable>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

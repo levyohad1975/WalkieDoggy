@@ -175,6 +175,69 @@ async function persistSubscription(subscription: PushSubscription): Promise<void
 }
 
 /**
+ * The VAPID public key to subscribe with: the one the push Edge Functions
+ * actually sign with (web-push-public-key), falling back to the build-time
+ * EXPO_PUBLIC_VAPID_PUBLIC_KEY only if that call fails.
+ *
+ * Production incident 2026-11-01: the build-time copy differed from the
+ * server's VAPID_PUBLIC_KEY secret, so Apple rejected every push with
+ * 400 {"reason":"VapidPkHashMismatch"}.
+ */
+export async function resolveVapidPublicKey(): Promise<string | null> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.functions.invoke('web-push-public-key', { body: {} });
+      const serverKey = typeof (data as { publicKey?: unknown } | null)?.publicKey === 'string'
+        ? ((data as { publicKey: string }).publicKey).trim()
+        : '';
+      if (!error && serverKey) return serverKey;
+    } catch {
+      // fall through to the build-time key
+    }
+  }
+  return process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim() || null;
+}
+
+function sameKey(current: ArrayBuffer | null | undefined, expected: ArrayBuffer): boolean {
+  if (!current) return false;
+  const a = new Uint8Array(current);
+  const b = new Uint8Array(expected);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Returns a subscription made with `vapidPublicKey`. An existing one made
+ * with a different key can never receive a push from this server, so it is
+ * replaced; the old endpoint then answers 410 and the push functions mark
+ * its row inactive.
+ */
+export async function subscriptionForKey(
+  registration: ServiceWorkerRegistration,
+  vapidPublicKey: string
+): Promise<PushSubscription> {
+  const expected = urlBase64ToUint8Array(vapidPublicKey);
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    // Browsers that do not expose the key cannot be checked; keep them.
+    const currentKey = existing.options?.applicationServerKey;
+    if (currentKey === undefined || sameKey(currentKey, expected)) return existing;
+    try {
+      await existing.unsubscribe();
+    } catch {
+      // subscribe() below still replaces it on most browsers
+    }
+  }
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: expected,
+  });
+}
+
+/**
  * Must be called from a direct user action (button/tap).
  *
  * iPhone/iPad Web Push requires the site to be installed as a Home Screen
@@ -190,12 +253,7 @@ export async function enableWebPush(): Promise<WebPushStatus> {
     throw new Error('Supabase is not configured');
   }
 
-  const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim();
-
-  if (!vapidPublicKey) {
-    throw new Error('VAPID public key is missing');
-  }
-
+  // Ask for permission first: on iOS it must follow the tap directly.
   let permission = Notification.permission;
 
   if (permission === 'default') {
@@ -210,20 +268,19 @@ export async function enableWebPush(): Promise<WebPushStatus> {
     return 'default';
   }
 
+  const vapidPublicKey = await resolveVapidPublicKey();
+
+  if (!vapidPublicKey) {
+    throw new Error('VAPID public key is missing');
+  }
+
   const registration = await navigator.serviceWorker.register('/sw.js', {
     scope: '/',
   });
 
   await navigator.serviceWorker.ready;
 
-  let subscription = await registration.pushManager.getSubscription();
-
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    });
-  }
+  const subscription = await subscriptionForKey(registration, vapidPublicKey);
 
   await persistSubscription(subscription);
 
@@ -300,7 +357,7 @@ export async function reconcileWebPushSubscription(): Promise<WebPushStatus> {
     return 'granted';
   }
 
-  const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  const vapidPublicKey = await resolveVapidPublicKey();
   if (!vapidPublicKey) {
     return 'granted';
   }
@@ -310,13 +367,9 @@ export async function reconcileWebPushSubscription(): Promise<WebPushStatus> {
     const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     await navigator.serviceWorker.ready;
 
-    subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-      });
-    }
+    // Also replaces a subscription made with an outdated key (see
+    // subscriptionForKey), so already-installed devices heal on next launch.
+    subscription = await subscriptionForKey(registration, vapidPublicKey);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[webPush] reconcile: service worker registration/subscribe failed', error);

@@ -2,6 +2,7 @@ import type { Walk, WalkGpsSession, WalkStatus } from '../types';
 import { localDateOnly } from './dateFormat';
 import { walkDateTime } from './nextWalk';
 import { formatDistanceMeters } from './gpsDistance';
+import { estimatedHomeLegsMeters } from './routeDisplay';
 
 export type StatsPeriod = '7d' | '30d' | 'all';
 
@@ -72,12 +73,12 @@ export interface MemberStat {
   count: number;
 }
 
-/** Distribution of DONE walks by who actually walked the dog (completedByUserId, falling back to responsibleUserId for older/edge-case rows), sorted descending. */
+/** Distribution of DONE walks by actual walker, with legacy attribution fallbacks, sorted descending. */
 export function computeMemberDistribution(walks: Walk[]): MemberStat[] {
   const counts = new Map<string, number>();
   for (const w of walks) {
     if (w.status !== 'done') continue;
-    const userId = w.completedByUserId ?? w.responsibleUserId;
+    const userId = w.actualWalkerUserId ?? w.completedByUserId ?? w.responsibleUserId;
     counts.set(userId, (counts.get(userId) ?? 0) + 1);
   }
   return [...counts.entries()]
@@ -122,8 +123,8 @@ export function computePeePoopStats(walks: Walk[]): PeePoopStats {
  * Reports & Insights redesign — a real filter set (date range/dog/member/
  * status/planned-vs-ad-hoc), replacing the old period-chip-only screen.
  * `dateRange` is inclusive "YYYY-MM-DD" bounds; null means unbounded (the
- * old 'all' period). `memberId` matches EITHER responsibleUserId or
- * completedByUserId — "walks involving this person", not just ones they
+ * old 'all' period). `memberId` matches responsibility or actual-walker
+ * attribution — "walks involving this person", not just ones they
  * completed, so filtering to a member still shows a walk they were
  * scheduled for but someone else ended up completing.
  */
@@ -155,7 +156,7 @@ export function applyStatisticsFilters(walks: Walk[], filters: StatisticsFilters
   return walks.filter((w) => {
     if (filters.dateRange && (w.date < filters.dateRange.start || w.date > filters.dateRange.end)) return false;
     if (filters.dogId && w.dogId !== filters.dogId) return false;
-    if (filters.memberId && w.responsibleUserId !== filters.memberId && w.completedByUserId !== filters.memberId) return false;
+    if (filters.memberId && w.responsibleUserId !== filters.memberId && w.actualWalkerUserId !== filters.memberId && w.completedByUserId !== filters.memberId) return false;
     if (filters.status !== 'all' && w.status !== filters.status) return false;
     if (filters.planned === 'planned' && w.isUnplanned) return false;
     if (filters.planned === 'adhoc' && !w.isUnplanned) return false;
@@ -262,21 +263,46 @@ export function computeDailyTrend(walks: Walk[]): TrendPoint[] {
 }
 
 export interface DistanceStats {
+  /** Measured plus the estimated legs from/to home (equal to measuredMeters when there are none). */
   totalMeters: number;
   averageMeters: number | null;
   /** How many of the in-range walks actually have a GPS session — the screen only shows this KPI at all when this is > 0 (PRD gap analysis: distance is an optional field that appears once GPS data exists, never a blocking/empty-by-default tile). Uses correctedDistanceMeters over distanceMeters when a family member has confirmed/corrected it — see WalkGpsSession's own doc comment for why the correction, once set, is authoritative. */
   sessionCount: number;
+  /** What GPS actually measured (or the confirmed correction). */
+  measuredMeters: number;
+  /**
+   * Owner request 2026-11-02: the estimated legs the walk map shows (home →
+   * first fix, last fix → home, or a saved reconstruction) also count. Not
+   * added on top of a confirmed correction, which already is the whole walk.
+   */
+  estimatedMeters: number;
 }
 
-export function computeDistanceStats(sessions: WalkGpsSession[]): DistanceStats {
-  const distances = sessions
-    .map((s) => s.correctedDistanceMeters ?? s.distanceMeters)
-    .filter((d): d is number => typeof d === 'number');
-  const totalMeters = distances.reduce((sum, d) => sum + d, 0);
+export function computeDistanceStats(
+  sessions: WalkGpsSession[],
+  homeByDogId: Record<string, { latitude: number; longitude: number } | null | undefined> = {},
+): DistanceStats {
+  let measuredMeters = 0;
+  let estimatedMeters = 0;
+  let sessionCount = 0;
+  for (const s of sessions) {
+    const measured = s.correctedDistanceMeters ?? s.distanceMeters;
+    if (typeof measured !== 'number') continue;
+    sessionCount += 1;
+    measuredMeters += measured;
+    if (s.correctedDistanceMeters == null) {
+      const legs = estimatedHomeLegsMeters(s, homeByDogId[s.dogId]);
+      estimatedMeters += legs.leadMeters + legs.tailMeters;
+    }
+  }
+  estimatedMeters = Math.round(estimatedMeters);
+  const totalMeters = measuredMeters + estimatedMeters;
   return {
     totalMeters,
-    averageMeters: distances.length === 0 ? null : Math.round(totalMeters / distances.length),
-    sessionCount: distances.length,
+    averageMeters: sessionCount === 0 ? null : Math.round(totalMeters / sessionCount),
+    sessionCount,
+    measuredMeters,
+    estimatedMeters,
   };
 }
 
@@ -322,6 +348,39 @@ export function computeInsights(
   }
 
   return insights;
+}
+
+export interface StatisticsHeadline {
+  text: string;
+  tone: 'warning' | 'positive';
+}
+
+/**
+ * One sentence above the KPI tiles: the single most actionable thing in the
+ * current range, or null when nothing stands out (no headline is better than
+ * a filler one). Priority: late planned walks → past walks nobody marked →
+ * a genuinely good week. `rangeLabel` is the period phrase, e.g. "בשבוע האחרון".
+ */
+export function computeStatisticsHeadline(walks: Walk[], rangeLabel: string, now: Date = new Date()): StatisticsHeadline | null {
+  const onTime = computeOnTimeStats(walks);
+  const resolvedOnTime = onTime.onTime + onTime.late;
+  if (resolvedOnTime >= 3 && onTime.onTimePercent < 50) {
+    return { tone: 'warning', text: `${rangeLabel} רק ${onTime.onTime} מתוך ${resolvedOnTime} טיולים מתוכננים יצאו בזמן` };
+  }
+
+  const nowMs = now.getTime();
+  const unmarked = walks.filter((w) => w.status === 'pending' && !w.isUnplanned && walkDateTime(w).getTime() <= nowMs).length;
+  if (unmarked >= 3) {
+    return { tone: 'warning', text: `${unmarked} טיולים שזמנם עבר עדיין לא סומנו` };
+  }
+
+  const completion = computeCompletionStats(walks);
+  const resolved = completion.done + completion.notDone;
+  if (resolved >= 5 && completion.donePercentOfResolved >= 90 && (resolvedOnTime < 3 || onTime.onTimePercent >= 80)) {
+    return { tone: 'positive', text: `${rangeLabel} ${completion.done} מתוך ${resolved} טיולים בוצעו. כל הכבוד!` };
+  }
+
+  return null;
 }
 
 /** Re-exported for screens that only need the formatting rule and don't otherwise touch logic/gpsDistance.ts directly — keeps a single import source for "statistics-adjacent" formatting. */

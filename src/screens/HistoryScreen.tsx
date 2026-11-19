@@ -1,6 +1,8 @@
+import { summarizeWalkEvents } from '../logic/walkEventCounts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
+import { Button } from '../components/Button';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -8,7 +10,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
-import { isOverdue } from '../logic/nextWalk';
+import { familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
@@ -40,7 +42,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 ];
 
 export function HistoryScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
+  const { family, users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, deleteScheduledWalkOccurrence, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -153,7 +155,27 @@ export function HistoryScreen() {
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
   const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
-  const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
+  // Field report 2026-11-06: a 4-day-old unresolved walk still showed the big
+  // ✓בוצע/✕לא בוצע resolution buttons in History. Resolving "did this happen?"
+  // only makes sense while it's still fresh in memory, so offer it only for an
+  // overdue walk from today or yesterday; anything older is already shown as a
+  // ✕ record (the per-row past-pending→skipped display coercion below) and
+  // stays a read-only record with no action. Family-local day, matching that
+  // coercion's own familyDateOnly boundary (not UTC).
+  const resolvableSinceIso = familyDateOnly(new Date(Date.now() - 86400000), family?.timezone);
+  const canResolveWalk = (w: Walk) =>
+    w.status === 'pending' &&
+    isOverdue(w) &&
+    w.date >= resolvableSinceIso &&
+    (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
+  // Owner request 2026-11-10: the two big ✓/✕ buttons on every unreported
+  // row made History look crowded, and yesterday's unreported walk showed as
+  // ✕ (as if reported "not done"). Such a walk now shows one small
+  // "ממתין לעדכון" chip; tapping the row opens the done / not-done choice.
+  const isAwaitingUpdate = (w: Walk) =>
+    w.status === 'pending' && !w.isUnplanned && isOverdue(w) && w.date >= resolvableSinceIso;
+  const [resolveChoiceWalkId, setResolveChoiceWalkId] = useState<string | null>(null);
+  const [onlyAwaiting, setOnlyAwaiting] = useState(false);
 
   // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
   // UTC-anchored cutoff would shift this boundary by a day for anyone
@@ -196,7 +218,12 @@ export function HistoryScreen() {
   const history = useMemo(
     () =>
       allHistory.filter((w) => {
-        if (userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
+        // Owner report 2026-11-10: with "היום" selected, the banner counted
+        // yesterday's unreported walk but tapping it showed nothing. The
+        // awaiting-update view shows every such walk, whatever the other
+        // filters are.
+        if (onlyAwaiting) return canResolveWalk(w);
+        if (userFilter && w.actualWalkerUserId !== userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
         if (planFilter === 'planned' && w.isUnplanned) return false;
         if (planFilter === 'unplanned' && !w.isUnplanned) return false;
         if (rangeFilter === 'today' && w.date !== todayString) return false;
@@ -205,12 +232,21 @@ export function HistoryScreen() {
         if (!walkMatchesHistorySearch(w, historySearchQuery)) return false;
         return true;
       }),
-    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery, onlyAwaiting]
   );
+  const awaitingForMeCount = useMemo(
+    () => allHistory.filter((w) => canResolveWalk(w)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allHistory, effectiveRole, effectiveUserId, resolvableSinceIso]
+  );
+  useEffect(() => {
+    if (onlyAwaiting && awaitingForMeCount === 0) setOnlyAwaiting(false);
+  }, [onlyAwaiting, awaitingForMeCount]);
 
   useEffect(() => {
     setHistoryPage(0);
-  }, [userFilter, planFilter, rangeFilter, customDate, historySearchQuery]);
+  }, [userFilter, planFilter, rangeFilter, customDate, historySearchQuery, onlyAwaiting]);
 
   const historyPageCount = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
   const pagedHistory = useMemo(() => history.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE), [history, historyPage]);
@@ -465,6 +501,21 @@ export function HistoryScreen() {
 
         <View style={styles.section}>
           <RtlText style={styles.sectionTitle}>היסטוריה · {history.length} טיולים</RtlText>
+          {awaitingForMeCount > 0 ? (
+            <Pressable
+              onPress={() => setOnlyAwaiting((v) => !v)}
+              style={[styles.awaitingBanner, onlyAwaiting && styles.awaitingBannerOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: onlyAwaiting }}
+              accessibilityLabel={onlyAwaiting ? 'הצגת כל הטיולים' : `${awaitingForMeCount} טיולים ממתינים לעדכון. הצגה רק שלהם`}
+            >
+              <RtlText style={styles.awaitingBannerText}>
+                {onlyAwaiting
+                  ? '× מוצגים רק טיולים שממתינים לעדכון · חזרה'
+                  : `⏳ ${awaitingForMeCount === 1 ? 'טיול אחד ממתין' : `${awaitingForMeCount} טיולים ממתינים`} לעדכון ›`}
+              </RtlText>
+            </Pressable>
+          ) : null}
           {history.length === 0 ? (
             <EmptyState title="אין היסטוריה בטווח הזה" subtitle="נסו לשנות את הסינון, או שחכו לטיול הראשון" />
           ) : (
@@ -472,30 +523,23 @@ export function HistoryScreen() {
               {dailySummary.map(([date, dayWalks]) => (
                 <View key={date} style={styles.dayGroup}>
                   <RtlText style={styles.dayLabel}>
-                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {dayWalks.filter((w) => w.hadPee).length} 💧 · {dayWalks.filter((w) => w.hadPoop).length} 💩
+                    {/* Weekday now lives once in the day header (it used to repeat
+                        on every row's date); "היום" needs no weekday. */}
+                    {date === familyDateOnly(new Date(), family?.timezone)
+                      ? formatHistoryDate(date)
+                      : `${new Date(`${date}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long' })} · ${formatHistoryDate(date)}`}
+                    {' '}- {dayWalks.length} טיולים · {summarizeWalkEvents(dayWalks).pee} 💧 · {summarizeWalkEvents(dayWalks).poop} 💩
                   </RtlText>
                   {dayWalks.map((w) => (
                     <View key={w.id} style={styles.historyItem}>
                       <WalkRow
-                        walk={w}
+                        walk={isAwaitingUpdate(w) ? w : w.status === 'pending' && !w.isUnplanned && w.date < familyDateOnly(new Date(), family?.timezone) ? { ...w, status: 'skipped' } : w}
+                        awaitingUpdate={isAwaitingUpdate(w)}
                         routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
-                        completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
-                        onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
-                        onMarkNotDone={
-                          canResolveWalk(w)
-                            ? async () => {
-                                await skip(w.id);
-                                // BATCH 3 CORRECTION #2 (review #2): refresh
-                                // the permissioned dataset immediately after
-                                // a mutation this screen owns, rather than
-                                // waiting for a future focus event.
-                                await refreshHistoryDataset();
-                              }
-                            : undefined
-                        }
-                        onPress={
+                        completedBy={usersById[w.actualWalkerUserId ?? w.completedByUserId ?? '']}
+                        onPress={canResolveWalk(w) ? () => setResolveChoiceWalkId(w.id) : 
                           // Section 2: an unplanned walk owned by the viewer
                           // (or any walk, for an admin) opens the dedicated
                           // edit/delete flow instead of the completed-details
@@ -543,6 +587,51 @@ export function HistoryScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      {/* Done / not-done for a walk nobody reported yet (2026-11-10: replaces
+          the two big buttons that sat on every such row). */}
+      <Modal visible={!!resolveChoiceWalkId} transparent animationType="slide" onRequestClose={() => setResolveChoiceWalkId(null)}>
+        <View style={styles.choiceBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setResolveChoiceWalkId(null)} accessibilityRole="button" accessibilityLabel="סגירה" />
+          {(() => {
+            const w = resolveChoiceWalkId ? sourceWalks.find((x) => x.id === resolveChoiceWalkId) : undefined;
+            if (!w) return null;
+            return (
+              <View style={styles.choiceSheet}>
+                <RtlText style={styles.choiceTitle} accessibilityRole="header">
+                  {`הטיול של ${usersById[w.responsibleUserId]?.name ?? 'בן משפחה'} · ${w.scheduledTime}`}
+                </RtlText>
+                <RtlText style={styles.choiceSub}>
+                  {`${new Date(`${w.date}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit' })} · האם הטיול בוצע?`}
+                </RtlText>
+                <View style={styles.choiceActions}>
+                  <Button
+                    label="✓ בוצע"
+                    onPress={() => {
+                      setResolveChoiceWalkId(null);
+                      setResolveWalkId(w.id);
+                    }}
+                    style={styles.choiceButton}
+                  />
+                  <Button
+                    label="✕ לא בוצע"
+                    variant="secondary"
+                    onPress={async () => {
+                      setResolveChoiceWalkId(null);
+                      await skip(w.id);
+                      // Refresh the permissioned dataset right after a
+                      // mutation this screen owns (BATCH 3 CORRECTION #2).
+                      await refreshHistoryDataset();
+                    }}
+                    style={styles.choiceButton}
+                    accessibilityHint="הטיול יירשם בהיסטוריה כטיול שלא בוצע"
+                  />
+                </View>
+              </View>
+            );
+          })()}
+        </View>
+      </Modal>
 
       <CompleteWalkModal
         visible={!!resolveWalk}
@@ -627,6 +716,15 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  awaitingBanner: { alignSelf: 'stretch', backgroundColor: '#FFF1E2', borderColor: '#F08A24', borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 6 },
+  awaitingBannerOn: { backgroundColor: '#FFE2C2' },
+  awaitingBannerText: { fontSize: 14, fontWeight: '800', color: '#8A4B00', textAlign: 'right' },
+  choiceBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  choiceSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, paddingBottom: 32, gap: 10 },
+  choiceTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  choiceSub: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
+  choiceActions: { flexDirection: 'row-reverse', gap: 10, marginTop: 6 },
+  choiceButton: { flex: 1 },
   sectionSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   summarySection: { gap: 6 },
   summaryHeadingRow: { width: '100%', gap: 2, alignItems: 'flex-end' },

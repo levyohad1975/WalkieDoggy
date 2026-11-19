@@ -35,7 +35,9 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     expect(ordinarySectionOpenIdx).toBeLessThan(adminSectionIdx);
     // Every labeled area between the ordinary-section comment and the
     // admin conditional must itself sit before that conditional too.
-    for (const title of ['👪 משפחה', '🔔 תזכורות והתראות', 'הישגים 🏆']) {
+    // Settings redesign 2026-11-02: topic cards (the dog / family /
+    // notifications); the row labels below are the same entry points.
+    for (const title of ['👨‍👩‍👧 משפחה', '⏰ תזכורות והתראות', '🏆 הישגים']) {
       const titleIdx = settingsSource.indexOf(title, sectionIdx);
       expect(titleIdx).toBeGreaterThan(-1);
       expect(titleIdx).toBeLessThan(adminSectionIdx);
@@ -59,11 +61,14 @@ describe('SettingsScreen — personal settings stay accessible to every member',
   });
 
   it("RemindersModal: a member can always toggle their OWN device's reminder switch, regardless of family role/permissions", () => {
-    // disabled={effectiveFamilyRole !== 'admin' && u.id !== effectiveUserId}
-    // — disabled only when BOTH not-admin AND not-self, i.e. never disabled
-    // for your own row.
+    // Refactored 2026-11-06 into a per-member `canEdit` so both the walk and
+    // chat toggles share one guard: canEdit = admin OR self, and each Switch
+    // is `disabled={!canEdit}` — i.e. disabled only when NOT admin AND NOT
+    // self, never for your own row (logically identical to the prior inline
+    // `effectiveFamilyRole !== 'admin' && u.id !== effectiveUserId`).
     expect(remindersSource).toMatch(
-      /disabled=\{effectiveFamilyRole !== 'admin' && u\.id !== effectiveUserId\}/
+      /const canEdit = effectiveFamilyRole === 'admin' \|\| u\.id === effectiveUserId;/
     );
+    expect(remindersSource).toMatch(/disabled=\{!canEdit\}/);
   });
 });

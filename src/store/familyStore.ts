@@ -81,6 +81,7 @@ interface FamilyState {
   setReminderEnabled: (userId: string, enabled: boolean) => Promise<void>;
   /** PRD §9 gamification off-switch — same shape as setReminderEnabled. */
   setGamificationEnabled: (userId: string, enabled: boolean) => Promise<void>;
+  setChatNotificationsEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
   /** Clears uploaded/cutout photo fields authoritatively so every surface falls back to the Walkie mascot. */
   removeDogPhoto: (dogId: string) => Promise<void>;
@@ -277,6 +278,24 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
     }
   },
 
+  setChatNotificationsEnabled: async (userId: string, enabled: boolean) => {
+    if (!guardTestModeMutation()) return;
+    const before = get().users.find((u) => u.id === userId);
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, chatNotificationsEnabled: enabled } : u)) }));
+    try {
+      await repository.updateUserChatNotificationSetting(userId, enabled);
+    } catch (e) {
+      // Same functional-merge-against-current-state rollback as
+      // setGamificationEnabled / setReminderEnabled above, for the same reason
+      // (a concurrent realtime reload must not be clobbered by a stale
+      // pre-await snapshot).
+      set((s) => ({
+        users: before ? s.users.map((u) => (u.id === userId ? { ...u, chatNotificationsEnabled: before.chatNotificationsEnabled } : u)) : s.users,
+        error: 'לא הצלחנו לעדכן את הגדרת התראות הצ׳אט',
+      }));
+    }
+  },
+
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
     // Upserts by id, so this doubles as "add a new dog" once a caller wants
@@ -373,6 +392,7 @@ if (!familyId) {
       color,
       remindersEnabled: true,
       gamificationEnabled: true,
+      chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ users: [...s.users, user] }));
@@ -403,9 +423,11 @@ if (!familyId) {
   updateUser: async (user: FamilyUser) => {
     if (!guardTestModeMutation()) return;
     const before = get().users.find((u) => u.id === user.id);
+    const photoChanged = Boolean(before && before.photoUrl !== user.photoUrl);
     set((s) => ({ users: s.users.map((u) => (u.id === user.id ? user : u)) }));
     try {
-      await repository.upsertUser(user);
+      if (photoChanged && repository.updateUserProfile) await repository.updateUserProfile(user);
+      else await repository.upsertUser(user);
     } catch (e) {
       // Functional merge against CURRENT state — see setReminderEnabled's
       // catch block above for why a raw `set({ users: prev, ... })` from a

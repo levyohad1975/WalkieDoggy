@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
+import { HelpCenterModal } from '../components/HelpCenterModal';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
@@ -75,6 +76,7 @@ export function FamilyScreen() {
   const isRealAdmin = isRealFamilyAdmin(realFamilyRole, impersonatingUserId);
 
   const [formVisible, setFormVisible] = useState(false);
+  const [helpCenterVisible, setHelpCenterVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<FamilyUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FamilyUser | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<UserDeletionImpact | null>(null);
@@ -424,7 +426,27 @@ export function FamilyScreen() {
     style={styles.addButton}
   />
 ) : null}
+
+        {/* Help is reachable here for every member: the Settings tab is
+            permission-gated for members, the Family tab is not. */}
+        {!systemObserverActive ? (
+          <View style={styles.helpSection}>
+            <RtlText style={styles.sectionHeader}>❓ עזרה</RtlText>
+            <Pressable
+              style={styles.helpRow}
+              onPress={() => setHelpCenterVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="עזרה ותמיכה"
+              testID="family-help-entry"
+            >
+              <RtlText style={styles.helpChevron}>‹</RtlText>
+              <RtlText style={styles.helpLabel}>💬 עזרה ותמיכה</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
+
+      <HelpCenterModal visible={helpCenterVisible} onClose={() => setHelpCenterVisible(false)} />
 
       <UserFormModal
         visible={formVisible}
@@ -509,6 +531,22 @@ export function FamilyScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  helpSection: { width: '100%', gap: spacing.sm, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  helpRow: {
+    flexDirection: 'row',
+    ...nativeDirection('ltr'),
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    minHeight: 52,
+  },
+  helpLabel: { flex: 1, ...typography.body, color: colors.textPrimary, textAlign: 'right' },
+  helpChevron: { fontSize: 20, color: colors.textSecondary, writingDirection: 'ltr' },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },

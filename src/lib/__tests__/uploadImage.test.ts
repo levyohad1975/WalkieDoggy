@@ -29,8 +29,9 @@ function configureSupabaseEnv(configured: boolean) {
 /** Same @supabase/supabase-js-level mocking style as realtime.test.ts. */
 function mockConfiguredSupabase() {
   const uploadMock = jest.fn().mockResolvedValue({ error: null });
+  const removeMock = jest.fn().mockResolvedValue({ error: null });
   const getPublicUrlMock = jest.fn().mockReturnValue({ data: { publicUrl: 'https://cdn.example/photo.jpg' } });
-  const fromMock = jest.fn(() => ({ upload: uploadMock, getPublicUrl: getPublicUrlMock }));
+  const fromMock = jest.fn(() => ({ upload: uploadMock, remove: removeMock, getPublicUrl: getPublicUrlMock }));
 
   jest.doMock('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => ({
@@ -46,7 +47,7 @@ function mockConfiguredSupabase() {
     })),
   }));
 
-  return { uploadMock, getPublicUrlMock, fromMock };
+  return { uploadMock, removeMock, getPublicUrlMock, fromMock };
 }
 
 /**
@@ -222,7 +223,7 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
     } as unknown as Response);
   }
 
-  it('uploads to the dog folder and returns the public URL, defaulting to .jpg', async () => {
+  it('uploads to the dog folder with a unique insert-only path and returns the public URL', async () => {
     const { uploadMock, getPublicUrlMock, fromMock } = mockConfiguredSupabase();
     mockLaunchImageLibraryAsync.mockResolvedValue({
       canceled: false,
@@ -234,11 +235,11 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
     const result = await pickAndUploadImage('dogs', 'family-9', 'dog-3');
 
     expect(fromMock).toHaveBeenCalledWith('family-photos');
-    expect(uploadMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg', expect.any(ArrayBuffer), {
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.jpg$/), expect.any(ArrayBuffer), {
       contentType: 'image/jpeg',
-      upsert: true,
+      upsert: false,
     });
-    expect(getPublicUrlMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg');
+    expect(getPublicUrlMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.jpg$/));
     expect(result).toBe('https://cdn.example/photo.jpg');
   });
 
@@ -253,9 +254,9 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
 
     await pickAndUploadImage('users', 'family-9', 'user-5');
 
-    expect(uploadMock).toHaveBeenCalledWith('family-9/users/user-5/1700000000000.png', expect.any(ArrayBuffer), {
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/users\/user-5\/1700000000000-[a-z0-9]+\.png$/), expect.any(ArrayBuffer), {
       contentType: 'image/png',
-      upsert: true,
+      upsert: false,
     });
   });
 
@@ -270,9 +271,9 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
 
     await pickAndUploadImage('dogs', 'family-9', 'dog-3');
 
-    expect(uploadMock).toHaveBeenCalledWith('family-9/dog/1700000000000.webp', expect.any(ArrayBuffer), {
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.webp$/), expect.any(ArrayBuffer), {
       contentType: 'image/webp',
-      upsert: true,
+      upsert: false,
     });
   });
 
@@ -288,6 +289,46 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
     const { pickAndUploadImage } = require('../uploadImage');
 
     await expect(pickAndUploadImage('dogs', 'family-9', 'dog-3')).rejects.toBe(storageError);
+  });
+});
+
+describe('removeUploadedFamilyPhoto', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+    configureSupabaseEnv(true);
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it('removes only the exact family/member object', async () => {
+    const { removeMock, fromMock } = mockConfiguredSupabase();
+    const { removeUploadedFamilyPhoto } = require('../uploadImage');
+
+    await removeUploadedFamilyPhoto(
+      'https://example.supabase.co/storage/v1/object/public/family-photos/family-9/users/user-5/123-abcd.jpg',
+      'family-9',
+      'users',
+      'user-5',
+    );
+
+    expect(fromMock).toHaveBeenCalledWith('family-photos');
+    expect(removeMock).toHaveBeenCalledWith(['family-9/users/user-5/123-abcd.jpg']);
+  });
+
+  it.each([
+    ['another family', 'https://example.supabase.co/storage/v1/object/public/family-photos/family-8/users/user-5/123.jpg'],
+    ['another profile', 'https://example.supabase.co/storage/v1/object/public/family-photos/family-9/users/user-8/123.jpg'],
+    ['another bucket', 'https://example.supabase.co/storage/v1/object/public/chat-attachments/family-9/users/user-5/123.jpg'],
+  ])('does not remove a photo belonging to %s', async (_label, url) => {
+    const { removeMock } = mockConfiguredSupabase();
+    const { removeUploadedFamilyPhoto } = require('../uploadImage');
+
+    await removeUploadedFamilyPhoto(url, 'family-9', 'users', 'user-5');
+
+    expect(removeMock).not.toHaveBeenCalled();
   });
 });
 
@@ -315,7 +356,7 @@ describe('takeAndUploadImage — family photo capture', () => {
     await expect(takeAndUploadImage('dogs', 'family-9', 'dog-3')).resolves.toBe('https://cdn.example/photo.jpg');
     expect(mockRequestCameraPermissionsAsync).toHaveBeenCalledTimes(1);
     expect(mockLaunchCameraAsync).toHaveBeenCalledWith(expect.objectContaining({ allowsEditing: true, aspect: [1, 1] }));
-    expect(uploadMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg', expect.any(ArrayBuffer), { contentType: 'image/jpeg', upsert: true });
-    expect(getPublicUrlMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg');
+    expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.jpg$/), expect.any(ArrayBuffer), { contentType: 'image/jpeg', upsert: false });
+    expect(getPublicUrlMock).toHaveBeenCalledWith(expect.stringMatching(/^family-9\/dog\/1700000000000-[a-z0-9]+\.jpg$/));
   });
 });

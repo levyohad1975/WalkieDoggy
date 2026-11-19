@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { DEFAULT_DOG_BACKGROUND } from '../theme/dogBackgrounds';
 import { RtlText } from '../components/RtlText';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabase } from '../lib/supabase';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -18,13 +21,60 @@ import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreview
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { parseJoinInput } from '../logic/familyJoinCode';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import {
+  acquireOtpRequestLock,
+  createOtpDiagnosticTrace,
+  getOtpDiagnosticSummary,
+  isOtpDiagnosticsEnabled,
+  probeOtpSdkTransport,
+  type OtpConnectivityResult,
+  type OtpDiagnosticSink,
+} from '../lib/emailOtpDiagnostics';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
 import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'installFirst' | 'recover' | 'create' | 'join' | 'redeem' | 'systemAdmin';
+
+/**
+ * iPhone/iPad Safari (or an in-app browser on iOS) that is NOT the
+ * home-screen web app. On iOS the home-screen app keeps storage separate
+ * from the browser, so joining here and then opening the shortcut used to
+ * leave the shortcut signed out (owner report 2026-11-03).
+ */
+function isIosBrowserNotInstalled(installed: boolean): boolean {
+  if (Platform.OS !== 'web' || installed || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent ?? '';
+  const iPadOs = navigator.platform === 'MacIntel' && (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1;
+  return /iPhone|iPad|iPod/i.test(ua) || iPadOs;
+}
+
+/**
+ * Best effort: point the web-app manifest at this exact join/invite link, so
+ * a shortcut saved from this page can open straight into joining. Browsers
+ * that ignore it simply use the normal start page.
+ */
+function pointManifestAtCurrentLink(): void {
+  try {
+    if (typeof document === 'undefined' || typeof window === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+    const link = document.querySelector('link[rel="manifest"]');
+    if (!link) return;
+    const origin = window.location.origin;
+    const manifest = {
+      name: 'Walkie Doggy Link', short_name: 'Walkie Doggy', start_url: window.location.href, scope: `${origin}/`,
+      display: 'standalone', background_color: '#FFF8E8', theme_color: '#FFF8E8',
+      icons: [
+        { src: `${origin}/icon-192.png`, sizes: '192x192', type: 'image/png' },
+        { src: `${origin}/icon-512.png`, sizes: '512x512', type: 'image/png' },
+      ],
+    };
+    link.setAttribute('href', URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' })));
+  } catch {
+    // Progressive enhancement only.
+  }
+}
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -39,7 +89,8 @@ type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
  * no changes needed here.
  */
 export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: (familyId: string) => Promise<void> | void }) {
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
   // Round 4 — set only when a redemption already succeeded server-side but
@@ -59,7 +110,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   // through the URL (the HTTPS link built by buildInviteLinkText() and
   // shared/QR'd by InviteShareModal) must take precedence over every
   // generic onboarding screen: computed once, synchronously, before the
-  // very first render, so an invited recipient never sees 'pwaChoice' or
+  // very first render, so an invited recipient never sees the start screen or
   // 'choose' flash by first. Read directly off window.location rather than
   // through parseInviteInput()'s full-message-paste path (that remains the
   // manual-entry fallback) — this is specifically the query string of the
@@ -100,9 +151,39 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   // invite/join link is already present, in which case that takes
   // precedence over this ambiguity entirely (see initialInviteToken/
   // initialJoinCode above).
+  // Owner request 2026-11-03: on iPhone, a join/invite link opened in the
+  // browser first asks to save the app to the home screen and join from
+  // there (see isIosBrowserNotInstalled). Opening the shortcut itself starts
+  // on ONE clear screen: join with a code or link ('join'), with small links
+  // for the family admin's email sign-in and for creating a new family.
+  const [installFirst] = useState(() => Boolean(initialInviteToken || initialJoinCode) && isIosBrowserNotInstalled(isInstalledWebApp));
+  const startMode: Mode = isInstalledWebApp ? 'join' : 'choose';
   const [mode, setMode] = useState<Mode>(
-    initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
+    installFirst ? 'installFirst' : initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : startMode
   );
+  const [linkCopied, setLinkCopied] = useState(false);
+  // Welcome screen on an iPhone browser: a small, non-blocking hint to save
+  // the app to the home screen first (replaces a blocking popup there).
+  const [showInstallHint] = useState(() => isIosBrowserNotInstalled(isInstalledWebApp));
+  const [installHintOpen, setInstallHintOpen] = useState(false);
+  useEffect(() => {
+    if (installFirst) pointManifestAtCurrentLink();
+  }, [installFirst]);
+  const adminTapCount = useRef(0);
+  const adminLastTap = useRef(0);
+  const handleAdminMascotTap = () => {
+    const now = Date.now();
+    adminTapCount.current = now - adminLastTap.current <= 700 ? adminTapCount.current + 1 : 1;
+    adminLastTap.current = now;
+    if (adminTapCount.current >= 4) {
+      adminTapCount.current = 0;
+      setAdminEmail('');
+      setVerificationCode('');
+      setVerificationSent(false);
+      setCreateError(null);
+      setMode('systemAdmin');
+    }
+  };
   // --- create ---
   const [familyName, setFamilyName] = useState('');
   const [dogName, setDogName] = useState('');
@@ -114,6 +195,13 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [probingOtpEndpoint, setProbingOtpEndpoint] = useState(false);
+  const [otpConnectivity, setOtpConnectivity] = useState<OtpConnectivityResult | null>(null);
+  const otpDiagnosticsEnabled = isOtpDiagnosticsEnabled();
+  const [otpDiagnostic, setOtpDiagnostic] = useState<ReturnType<typeof createOtpDiagnosticTrace>['snapshot'] | null>(null);
+  // State updates render asynchronously. A ref closes the short window in
+  // which two rapid taps could start duplicate Auth/email requests.
+  const emailVerificationRequestRef = useRef(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
   // Set when get_my_family_onboarding_status() reports 'rejected' -- a
   // System Admin declined this device's family-creation request.
@@ -159,18 +247,56 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendAdminVerification = async () => {
+  const sendAdminVerification = async (shouldCreateUser: boolean = true) => {
+    // Never pass this handler directly as `onPress`: the press event would
+    // arrive as `shouldCreateUser`, and serializing that cyclic DOM/React
+    // event into the OTP request body throws before any request is sent
+    // (Production 2026-11-01). Coerce defensively to a strict boolean too.
+    const createUser = shouldCreateUser !== false;
+    if (!acquireOtpRequestLock(emailVerificationRequestRef)) return;
     setVerifyingEmail(true);
     setCreateError(null);
+    const trace = otpDiagnosticsEnabled ? createOtpDiagnosticTrace() : null;
+    const diagnostics: OtpDiagnosticSink | undefined = trace ? {
+      record(stage, error, category) {
+        try {
+          trace.sink.record(stage, error, category);
+          setOtpDiagnostic({ ...trace.snapshot, events: [...trace.snapshot.events] });
+        } catch {
+          // Diagnostics are best-effort and never block the auth operation.
+        }
+      },
+    } : undefined;
+    diagnostics?.record('button_handler_entered');
     try {
-      const normalizedEmail = await requestAdminEmailVerification(adminEmail);
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail, createUser, diagnostics);
       setAdminEmail(normalizedEmail);
       setVerificationSent(true);
       setVerificationCode('');
     } catch (e) {
+      const lastStage = trace ? getOtpDiagnosticSummary(trace.snapshot)?.stage : undefined;
+      if (diagnostics && lastStage !== 'input_validation_failed'
+        && lastStage !== 'promise_rejected' && lastStage !== 'auth_error_returned') {
+        diagnostics.record('handler_failed_before_auth', e);
+      }
       setCreateError(friendlyErrorMessage(e));
     } finally {
+      emailVerificationRequestRef.current = false;
       setVerifyingEmail(false);
+    }
+  };
+
+  const testStagingAuthConnectivity = async () => {
+    if (!otpDiagnosticsEnabled || probingOtpEndpoint || verifyingEmail) return;
+    setProbingOtpEndpoint(true);
+    setOtpConnectivity(null);
+    try {
+      setOtpConnectivity(await probeOtpSdkTransport(supabase?.auth));
+    } catch {
+      // This probe is diagnostic-only and must not affect onboarding state.
+      setOtpConnectivity({ category: 'javascript', elapsedMs: 0 });
+    } finally {
+      setProbingOtpEndpoint(false);
     }
   };
 
@@ -284,7 +410,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     const normalized = initialJoinCode.toUpperCase();
     setCode(normalized);
     void lookup(normalized);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
+    if (!installFirst && typeof window !== 'undefined' && window.history?.replaceState) {
       try {
         const url = new URL(window.location.href);
         url.searchParams.delete('join');
@@ -371,7 +497,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     if (!initialInviteToken) return;
     setRedeemInput(initialInviteToken);
     void inspectInvite(initialInviteToken);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
+    if (!installFirst && typeof window !== 'undefined' && window.history?.replaceState) {
       try {
         const url = new URL(window.location.href);
         url.searchParams.delete('invite');
@@ -383,6 +509,37 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One field for everything a family member may have received: the family
+  // code, the family join link, or a personal invite link (owner request
+  // 2026-11-03). A personal invite goes to its own confirmation screen.
+  const handleJoinText = (value: string, autoLookup = false) => {
+    if (/[?&]invite=/.test(value) && parseInviteInput(value)) {
+      setRedeemInput(value);
+      setMode('redeem');
+      void inspectInvite(value);
+      return;
+    }
+    // Forgiving like redeem mode's parseInviteInput(): a pasted full join
+    // link/share message is reduced to the bare code (no TextInput maxLength
+    // for exactly that reason — the cap is applied after parsing).
+    const parsed = (parseJoinInput(value) ?? '').toUpperCase().slice(0, 8);
+    setCode(parsed);
+    setFound(null);
+    setJoinError(null);
+    if (autoLookup && parsed.length >= 4) void lookup(parsed);
+  };
+
+  const canPasteFromClipboard = Platform.OS === 'web' && typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function';
+  const pasteJoinText = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) handleJoinText(text, true);
+      else setJoinError('אין כרגע קוד בהעתקה. העתיקו את הקוד או הקישור מההודעה ונסו שוב.');
+    } catch {
+      setJoinError('לא הצלחנו לקרוא את ההעתקה. לחצו לחיצה ארוכה על השדה ובחרו "הדבקה".');
+    }
+  };
 
   const confirmRedeem = async () => {
     if (!redeemToken) return;
@@ -426,32 +583,113 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     }
   };
 
-  if (mode === 'pwaChoice') {
+  if (mode === 'systemAdmin') {
     return (
       <SafeAreaView style={styles.container}>
-        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
-        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
-        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
-        </RtlText>
-        <Button
-          label="המשפחה שלי כבר קיימת"
-          variant="secondary"
-          onPress={() => setMode('recover')}
-          style={styles.wideButton}
+        <WalkieMascot state="ready" size={128} accessibilityLabel="Walkie Doggy" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">כניסת מנהל מערכת</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>אימות מאובטח ללא כניסה למשפחה</RtlText>
+        <TextInput
+          value={adminEmail}
+          onChangeText={(value) => { setAdminEmail(value); setVerificationSent(false); setVerificationCode(''); setCreateError(null); }}
+          placeholder="כתובת אימייל" accessibilityLabel="כתובת אימייל"
+          keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
+          editable={!verifyingEmail} style={styles.input} textAlign="left"
         />
-        <Button
-          label="יש לי הזמנה"
-          variant="secondary"
-          onPress={() => setMode('redeem')}
-          style={styles.wideButton}
-        />
-        <Button
-          label="יצירת משפחה חדשה"
-          variant="secondary"
-          onPress={() => setMode('create')}
-          style={styles.wideButton}
-        />
+        {!verificationSent ? (
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שליחת קוד OTP'}
+            onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()}
+            loading={verifyingEmail} style={styles.wideButton} />
+        ) : (
+          <>
+            <TextInput value={verificationCode} onChangeText={setVerificationCode}
+              placeholder="קוד האימות" accessibilityLabel="קוד האימות"
+              keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
+              style={styles.input} textAlign="center" />
+            <Button label={verifyingEmail ? 'מאמת…' : 'כניסה לממשק הניהול'}
+              disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail}
+              onPress={async () => {
+                setVerifyingEmail(true);
+                setCreateError(null);
+                try {
+                  await verifyAdminEmailOtp(adminEmail, verificationCode);
+                  await useSystemAdminStore.getState().refresh();
+                  if (!useSystemAdminStore.getState().isSystemAdmin) {
+                    throw new Error('לכתובת זו אין הרשאת מנהל מערכת.');
+                  }
+                  // App.tsx opens the platform console directly for an authenticated
+                  // System Admin without a claimed family/profile.
+                } catch (error) {
+                  setCreateError(friendlyErrorMessage(error));
+                } finally {
+                  setVerifyingEmail(false);
+                }
+              }} style={styles.wideButton} />
+            <Button label="שליחת קוד חדש" variant="secondary"
+              onPress={() => sendAdminVerification(false)} disabled={verifyingEmail}
+              style={styles.wideButton} />
+          </>
+        )}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
+        <Button label="חזרה" variant="secondary"
+          onPress={() => { setMode(startMode); setVerificationCode(''); }}
+          style={styles.wideButton} />
+      </SafeAreaView>
+    );
+  }
+
+  if (mode === 'installFirst') {
+    const familyLabel = found?.name ?? preview?.familyName ?? null;
+    const dogLabel = found?.dogName ?? preview?.dogName ?? null;
+    const shareText = initialInviteToken
+      ? (typeof window !== 'undefined' ? `${window.location.origin}/?invite=${encodeURIComponent(initialInviteToken)}` : initialInviteToken)
+      : (initialJoinCode ?? '').toUpperCase();
+    const copyLink = async () => {
+      try {
+        await navigator.clipboard.writeText(shareText);
+        setLinkCopied(true);
+      } catch {
+        setLinkCopied(false);
+      }
+    };
+    return (
+      <SafeAreaView style={styles.formSafeArea}>
+        <ScrollView contentContainerStyle={styles.formScrollContent}>
+          <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
+            <WalkieMascot state="excited" size={86} testID="onboarding-mascot-install-first" />
+            <View style={styles.formSpeech}>
+              <RtlText style={styles.formSpeechText}>
+                {familyLabel ? `הוזמנתם ל${familyLabel}${dogLabel ? ` · ${dogLabel}` : ''}` : 'הוזמנתם להצטרף למשפחה'}
+              </RtlText>
+            </View>
+          </View>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">קודם שומרים במסך הבית</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+            באייפון, ההתחברות נשמרת רק במקום שבו מצטרפים. מצטרפים מקיצור הדרך במסך הבית, וכך גם התזכורות מגיעות.
+          </RtlText>
+          <View style={[styles.form, isDesktop && styles.formDesktop]}>
+            <RtlText style={styles.stepHint}>1. הקישו על כפתור השיתוף ⬆︎ (בגרסאות חדשות: ⋯ ואז "שיתוף")</RtlText>
+            <RtlText style={styles.stepHint}>2. בחרו "הוספה למסך הבית" ואשרו</RtlText>
+            <RtlText style={styles.stepHint}>3. פתחו את Walkie Doggy מהאייקון החדש והקישו "הדבקה"</RtlText>
+            {initialJoinCode ? (
+              <RtlText style={styles.installCode} accessibilityLabel={`קוד המשפחה ${shareText}`}>{shareText}</RtlText>
+            ) : null}
+            <Button
+              label={linkCopied ? '✓ הועתק — אפשר להמשיך לשלב 1' : initialJoinCode ? '📋 העתקת קוד המשפחה' : '📋 העתקת קישור ההזמנה'}
+              onPress={() => void copyLink()}
+              style={styles.wideButton}
+            />
+            <RtlText style={styles.installHint}>
+              לא רואים "הוספה למסך הבית"? כנראה הקישור נפתח בתוך וואטסאפ. בחרו "פתיחה בספארי" (בסמל ⋯ או המצפן) ונסו שוב.
+            </RtlText>
+          </View>
+          <Button
+            label="להמשיך בדפדפן בלי לשמור"
+            variant="secondary"
+            onPress={() => setMode(initialInviteToken ? 'redeem' : 'join')}
+            style={styles.installContinue}
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -462,7 +700,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
         <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
         <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
         <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחת את Walkie Doggy מהאייקון החדש. אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
+          אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
         </RtlText>
         <TextInput
           value={adminEmail}
@@ -475,21 +713,23 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           textAlign="right"
         />
         {!verificationSent ? (
-          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
         ) : (
           <>
-            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode" style={styles.input} textAlign="right" />
             <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
           </>
         )}
         {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
-        <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
-        <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
+        <Button label="אני בן/בת משפחה — יש לי קוד או קישור" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+        <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
       </SafeAreaView>
     );
   }
 
-  if (mode === 'choose' && pendingInviteRedemption) {
+  if (mode === startMode && pendingInviteRedemption) {
     // Round 4 — a redemption already succeeded server-side but this device
     // hasn't confirmed it yet (see authStore.ts). Deliberately NOT the
     // ordinary paste form — retrying with the same token would replay an
@@ -515,16 +755,93 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   }
 
   if (mode === 'choose') {
+    // Owner request 2026-11-03: a warm, illustrated welcome again — built
+    // only from approved brand assets (the Walkie park background, the
+    // wordmark and the official mascot; MASCOT_SPEC.md), with real text and
+    // real buttons, so it fits every screen and stays accessible.
+    const columnWidth = Math.min(width, 560);
+    // Everything, including both buttons and the admin link, must fit above
+    // Safari's toolbar on a phone (owner report 2026-11-03).
+    const heroHeight = Math.round(Math.max(220, Math.min(columnWidth * 0.68, windowHeight * 0.36, 400)));
+    const mascotSize = Math.round(heroHeight * 0.46);
+    const features = [
+      { icon: '📅', label: 'תזכורות חכמות', tone: styles.featureMint },
+      { icon: '🔔', label: 'התראות בקלות', tone: styles.featurePink },
+      { icon: '👨‍👩‍👧', label: 'שיתוף במשפחה', tone: styles.featureSky },
+      { icon: '💛', label: 'כלב מאושר יותר', tone: styles.featureCream },
+    ];
     return (
-      <SafeAreaView style={styles.welcomeContainer}>
-        <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
-          <WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
-          <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
-          <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
-          <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
-          <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
-          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
-        </View>
+      <SafeAreaView style={styles.welcomeContainer} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.welcomeScroll} bounces={false}>
+          <View style={styles.welcomeColumn}>
+            <ImageBackground
+              source={DEFAULT_DOG_BACKGROUND.source!}
+              style={[styles.welcomeHero, { height: heroHeight }]}
+              imageStyle={styles.welcomeHeroImage}
+              resizeMode="cover"
+            >
+              <Image
+                source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
+                style={[styles.welcomeWordmark, { marginTop: insets.top + spacing.lg }]}
+                resizeMode="contain"
+                accessibilityLabel="Walkie Doggy Link"
+              />
+              <View style={styles.welcomeStage}>
+                <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy">
+                  <WalkieMascot state="ready" size={mascotSize} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+                </Pressable>
+                <View style={[styles.welcomeBubble, { marginBottom: Math.round(mascotSize * 0.45) }]}>
+                  <RtlText style={styles.welcomeBubbleText}>{'משפחה של מטיילים?\nבואו נצא לדרך!'}</RtlText>
+                </View>
+              </View>
+              <Svg pointerEvents="none" width="100%" height={72} viewBox="0 0 100 10" preserveAspectRatio="none" style={styles.welcomeHeroFade}>
+                <Defs>
+                  <LinearGradient id="welcomeHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+                    <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100" height="10" fill="url(#welcomeHeroCreamFade)" />
+              </Svg>
+            </ImageBackground>
+
+            <View style={styles.welcomeBody}>
+              {showInstallHint ? (
+                <Pressable
+                  onPress={() => setInstallHintOpen((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: installHintOpen }}
+                  accessibilityLabel="באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית"
+                  style={styles.installHintPill}
+                >
+                  <RtlText style={styles.installHintTitle}>📲 באייפון? מומלץ קודם לשמור במסך הבית {installHintOpen ? '▴' : '▾'}</RtlText>
+                  {installHintOpen ? (
+                    <>
+                      <RtlText style={styles.installHintStep}>1. הקישו על כפתור השיתוף ⬆︎ בסרגל של ספארי</RtlText>
+                      <RtlText style={styles.installHintStep}>2. בחרו "הוספה למסך הבית" ואשרו</RtlText>
+                      <RtlText style={styles.installHintStep}>3. פתחו מהאייקון החדש. שם ההתחברות נשמרת והתזכורות מגיעות</RtlText>
+                    </>
+                  ) : null}
+                </Pressable>
+              ) : null}
+              <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
+              <RtlText style={styles.welcomeCopy}>טיולים, תזכורות ושיתוף, במקום אחד.</RtlText>
+              <View style={styles.featureRow}>
+                {features.map((f) => (
+                  <View key={f.label} style={[styles.featureChip, f.tone]} accessibilityLabel={f.label}>
+                    <RtlText style={styles.featureChipIcon}>{f.icon}</RtlText>
+                    <RtlText style={styles.featureChipLabel}>{f.label}</RtlText>
+                  </View>
+                ))}
+              </View>
+              <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
+              <Button label="קיבלתי קוד או קישור הצטרפות" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+              <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
+                <RtlText style={styles.textLink}>מנהל/ת של משפחה קיימת? כניסה עם קוד למייל</RtlText>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -538,7 +855,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -551,7 +868,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -581,6 +898,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   setVerifiedAdminEmail(null);
                   setVerificationCode('');
                   setCreateError(null);
+                  setOtpDiagnostic(null);
+                  setOtpConnectivity(null);
                 }}
                 placeholder="name@example.com"
                 placeholderTextColor={colors.textSecondary}
@@ -596,15 +915,28 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               {!verificationSent && !verifiedAdminEmail ? (
                 <Button
                   label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
-                  onPress={sendAdminVerification}
-                  disabled={!adminEmail.trim() || verifyingEmail}
+                  onPress={() => sendAdminVerification(true)}
+                  disabled={!adminEmail.trim() || verifyingEmail || probingOtpEndpoint}
                   loading={verifyingEmail}
+                  style={styles.wideButton}
+                />
+              ) : null}
+              {otpDiagnosticsEnabled && !verifiedAdminEmail ? (
+                <Button
+                  label={probingOtpEndpoint ? 'בודק SDK לנתיב OTP...' : 'בדיקת SDK לנתיב OTP (ללא אימייל)'}
+                  variant="secondary"
+                  onPress={testStagingAuthConnectivity}
+                  disabled={probingOtpEndpoint || verifyingEmail}
+                  loading={probingOtpEndpoint}
                   style={styles.wideButton}
                 />
               ) : null}
 
               {verificationSent && !verifiedAdminEmail ? (
                 <>
+                  <RtlText style={styles.stepHint} accessibilityLiveRegion="polite">
+                    בקשת הקוד התקבלה. בדקו את תיבת הדואר ואת תיקיית הספאם. האישור הזה אינו מבטיח שהמייל נמסר.
+                  </RtlText>
                   <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
                   <TextInput
                     value={verificationCode}
@@ -614,6 +946,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                     style={[styles.input, styles.codeInput]}
                     textAlign="center"
                     keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
                     autoCorrect={false}
                     maxLength={8}
                     accessibilityLabel="קוד האימות שקיבלת בדוא״ל"
@@ -628,7 +962,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   <Button
                     label="שליחת קוד חדש"
                     variant="secondary"
-                    onPress={sendAdminVerification}
+                    onPress={() => sendAdminVerification(true)}
                     disabled={verifyingEmail}
                     style={styles.wideButton}
                   />
@@ -679,7 +1013,33 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   {createError}
                 </RtlText>
               ) : null}
-              <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+              {otpDiagnosticsEnabled && otpDiagnostic ? (() => {
+                const summary = getOtpDiagnosticSummary(otpDiagnostic);
+                if (!summary) return null;
+                const fetchEvent = [...otpDiagnostic.events].reverse().find((event) =>
+                  event.stage === 'auth_fetch_invoked'
+                  || event.stage === 'auth_fetch_resolved'
+                  || event.stage === 'auth_fetch_rejected'
+                );
+                const fetchSummary = fetchEvent
+                  ? ` · ${fetchEvent.stage.replace('auth_fetch_', 'fetch_')}${fetchEvent.httpStatus ? ` HTTP ${fetchEvent.httpStatus}` : ''}`
+                  : otpDiagnostic.events.some((event) => event.stage === 'auth_client_rejected_before_fetch')
+                    ? ' · לפני fetch'
+                    : '';
+                return (
+                  <RtlText style={styles.stepHint} accessibilityLabel="אבחון זמני של בקשת האימות">
+                    אבחון זמני {otpDiagnostic.reference} · {summary.category.toUpperCase()} · {summary.stage}{fetchSummary} · {summary.elapsedMs}ms
+                  </RtlText>
+                );
+              })() : null}
+              {otpDiagnosticsEnabled && otpConnectivity ? (
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת SDK לנתיב OTP ללא אימייל">
+                  בדיקת SDK לנתיב OTP ללא אימייל: {otpConnectivity.category === 'http_response'
+                    ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
+                    : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
+                </RtlText>
+              ) : null}
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -776,7 +1136,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               ) : (
                 <Button
                   label={inspecting ? 'בודק...' : 'בדיקת ההזמנה'}
-                  onPress={inspectInvite}
+                  onPress={() => { void inspectInvite(); }}
                   disabled={!parseInviteInput(redeemInput) || inspecting}
                   loading={inspecting}
                   style={styles.wideButton}
@@ -788,7 +1148,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 variant="secondary"
                 onPress={() => {
                   resetRedeemMode();
-                  setMode(isInstalledWebApp ? 'pwaChoice' : 'choose');
+                  setMode(startMode);
                 }}
                 style={styles.wideButton}
               />
@@ -805,36 +1165,27 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
-            <WalkieMascot state="excited" size={86} />
-            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה</RtlText></View>
+            <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="excited" size={86} testID="onboarding-mascot-join" /></Pressable>
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>{startMode === 'join' ? 'ברוכים הבאים! בואו נמצא את המשפחה שלכם' : 'קיבלתם קוד? בואו נמצא את המשפחה'}</RtlText></View>
           </View>
-          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
-          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
+          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הדביקו או הקלידו את הקוד או הקישור שקיבלתם מבן/בת המשפחה</RtlText>
 
           <View style={[styles.form, isDesktop && styles.formDesktop]}>
-            <RtlText style={styles.label}>קוד הזמנה</RtlText>
+            {canPasteFromClipboard ? (
+              <Button label="📋 הדבקה" onPress={() => void pasteJoinText()} disabled={looking || joining} style={styles.wideButton} />
+            ) : null}
+            <RtlText style={styles.label}>קוד או קישור הצטרפות</RtlText>
             <TextInput
               value={code}
-              onChangeText={(v) => {
-                // Family Lifecycle repair (item 6) — forgiving like
-                // redeem mode's parseInviteInput(): a pasted full join
-                // link/share message is recognized and reduced to the
-                // bare code, not truncated to garbage by a naive
-                // character cap. No TextInput `maxLength` here for
-                // exactly that reason — the cap is applied ourselves,
-                // after parsing, below.
-                const parsed = parseJoinInput(v) ?? '';
-                setCode(parsed.toUpperCase().slice(0, 8));
-                setFound(null);
-                setJoinError(null);
-              }}
+              onChangeText={(v) => handleJoinText(v)}
               placeholder="ABC123"
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, styles.codeInput, styles.ltrInput]}
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}
-              accessibilityLabel="קוד הזמנה"
+              accessibilityLabel="קוד או קישור הצטרפות"
             />
 
             {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
@@ -859,15 +1210,27 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
             ) : (
               <Button
                 label={looking ? 'מחפש...' : 'חיפוש משפחה'}
-                onPress={lookup}
+                onPress={() => { void lookup(); }}
                 disabled={code.trim().length < 4 || looking}
                 loading={looking}
                 style={styles.wideButton}
               />
             )}
 
-            <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+            {startMode === 'join' ? null : (
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
+            )}
           </View>
+          {startMode === 'join' ? (
+            <View style={styles.startLinks}>
+              <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
+                <RtlText style={styles.textLink}>מנהל/ת של המשפחה? כניסה עם קוד למייל</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setMode('create')} accessibilityRole="button" accessibilityLabel="יצירת משפחה חדשה" hitSlop={8}>
+                <RtlText style={styles.textLink}>יצירת משפחה חדשה</RtlText>
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -876,13 +1239,31 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
-  welcomeContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  welcomeCard: { width: '100%', maxWidth: 480, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl, borderRadius: radii.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  welcomeCardDesktop: { maxWidth: 560, paddingVertical: 36 },
-  welcomeBrand: { fontSize: 18, fontWeight: '800', color: colors.primaryDark },
-  welcomeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
-  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 25, textAlign: 'center', marginBottom: spacing.sm },
+  welcomeContainer: { flex: 1, backgroundColor: colors.background },
+  welcomeScroll: { flexGrow: 1, alignItems: 'center', backgroundColor: colors.background },
+  welcomeColumn: { width: '100%', maxWidth: 560, flexGrow: 1 },
+  welcomeHero: { width: '100%', justifyContent: 'space-between', overflow: 'hidden' },
+  welcomeHeroImage: { width: '100%', height: '100%' },
+  welcomeHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  welcomeWordmark: { width: 190, height: 68, alignSelf: 'center' },
+  welcomeStage: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.lg, paddingBottom: 0, zIndex: 1 },
+  welcomeBubble: { maxWidth: 176, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 3, borderColor: colors.primary, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 10 },
+  welcomeBubbleText: { color: colors.primaryDark, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'center' },
+  welcomeBody: { width: '100%', alignItems: 'center', gap: 10, paddingHorizontal: spacing.lg, paddingTop: 0, paddingBottom: spacing.lg },
+  welcomeTitle: { fontSize: 26, lineHeight: 32, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
+  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 24, textAlign: 'center' },
   welcomeButton: { width: '100%', minHeight: 52 },
+  featureRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+  featureChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },
+  featureChipIcon: { fontSize: 15, lineHeight: 20 },
+  featureChipLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: colors.primaryDark },
+  featureMint: { backgroundColor: '#E3F5EC' },
+  installHintPill: { width: '100%', backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, gap: 4 },
+  installHintTitle: { fontSize: 14, lineHeight: 20, fontWeight: '800', color: colors.primaryDark, textAlign: 'right' },
+  installHintStep: { fontSize: 13, lineHeight: 19, color: colors.textPrimary, textAlign: 'right' },
+  featurePink: { backgroundColor: '#FBE6EA' },
+  featureSky: { backgroundColor: colors.primarySoft },
+  featureCream: { backgroundColor: '#FFF3D6' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
@@ -976,4 +1357,9 @@ const styles = StyleSheet.create({
   previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md, justifyContent: 'flex-end' },
   previewMember: { alignItems: 'center', width: 56, gap: spacing.xs },
   previewMemberName: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
+  textLink: { fontSize: 15, lineHeight: 22, color: colors.primaryDark, fontWeight: '700', textAlign: 'center', textDecorationLine: 'underline', paddingVertical: 6 },
+  startLinks: { width: '100%', maxWidth: 560, alignItems: 'center', gap: 4, marginTop: spacing.lg },
+  installCode: { fontSize: 32, fontWeight: '900', letterSpacing: 6, color: colors.textPrimary, textAlign: 'center', marginTop: spacing.md, writingDirection: 'ltr' },
+  installHint: { fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'right', marginTop: spacing.md },
+  installContinue: { width: '100%', maxWidth: 560, marginTop: spacing.lg },
 });

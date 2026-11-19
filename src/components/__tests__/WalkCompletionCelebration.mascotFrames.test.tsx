@@ -170,4 +170,29 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
 
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1), { timeout: 8000 });
   });
+
+  describe('slow asset download (owner report 2026-11-13)', () => {
+    it('does not start the display window until the animated mascot has loaded', async () => {
+      const onDismiss = jest.fn();
+      const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={onDismiss} />);
+      await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+      act(() => { jest.advanceTimersByTime(2000); });
+      loadV2(screen);
+      act(() => { jest.advanceTimersByTime(4500); });
+      expect(onDismiss).not.toHaveBeenCalled();
+      act(() => { jest.advanceTimersByTime(700); });
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the static mascot when the animated one is too slow, and still dismisses', async () => {
+      const onDismiss = jest.fn();
+      const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={onDismiss} />);
+      await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+      await act(async () => {}); // let the reduced-motion check resolve
+      act(() => { jest.advanceTimersByTime(2600); });
+      expect(screen.getByTestId('completion-mascot-animation').props.source).not.toBe(HIGH_FIVE_V2);
+      act(() => { jest.advanceTimersByTime(2700); });
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+  });
 });

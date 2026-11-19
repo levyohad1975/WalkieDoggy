@@ -513,6 +513,98 @@ describe('lib/webPush — reconcileWebPushSubscription (refresh/reopen recovery)
   });
 });
 
+/**
+ * Production incident 2026-11-01: the build-time VAPID key differed from the
+ * key the push Edge Functions sign with, so Apple rejected every push with
+ * 400 {"reason":"VapidPkHashMismatch"}. The client now subscribes with the
+ * server's key and replaces a subscription made with any other key.
+ */
+describe('lib/webPush — server VAPID key and stale-key healing', () => {
+  const SERVER_KEY = 'BG_OsMyspRZtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+  function keyBuffer(key: string): ArrayBuffer {
+    return new Uint8Array(urlBase64ToBytes(key)).buffer;
+  }
+
+  function mockSupabase(invoke: jest.Mock, rpc: jest.Mock) {
+    jest.doMock('../supabase', () => ({
+      isSupabaseConfigured: true,
+      supabase: { rpc, functions: { invoke } },
+    }));
+  }
+
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('prefers the key the server signs with over the build-time key', async () => {
+    const invoke = jest.fn().mockResolvedValue({ data: { publicKey: SERVER_KEY }, error: null });
+    mockSupabase(invoke, jest.fn());
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const { resolveVapidPublicKey } = require('../webPush') as typeof import('../webPush');
+    await expect(resolveVapidPublicKey()).resolves.toBe(SERVER_KEY);
+    expect(invoke).toHaveBeenCalledWith('web-push-public-key', { body: {} });
+  });
+
+  it('falls back to the build-time key when the server call fails', async () => {
+    const invoke = jest.fn().mockResolvedValue({ data: null, error: new Error('offline') });
+    mockSupabase(invoke, jest.fn());
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const { resolveVapidPublicKey } = require('../webPush') as typeof import('../webPush');
+    await expect(resolveVapidPublicKey()).resolves.toBe(VAPID_KEY);
+  });
+
+  it('RECONCILE: replaces a subscription made with a different key and persists the new one', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const unsubscribe = jest.fn().mockResolvedValue(true);
+    const stale = {
+      options: { applicationServerKey: keyBuffer(VAPID_KEY) },
+      unsubscribe,
+      toJSON: () => ({ endpoint: 'https://push.example/stale', keys: { p256dh: 'ps', auth: 'as' } }),
+    };
+    const fresh = {
+      options: { applicationServerKey: keyBuffer(SERVER_KEY) },
+      toJSON: () => ({ endpoint: 'https://push.example/fresh', keys: { p256dh: 'pf', auth: 'af' } }),
+    };
+    const subscribe = jest.fn().mockResolvedValue(fresh);
+    const register = jest.fn().mockResolvedValue({ pushManager: { getSubscription: jest.fn().mockResolvedValue(stale), subscribe } });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    mockSupabase(jest.fn().mockResolvedValue({ data: { publicKey: SERVER_KEY }, error: null }), rpc);
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const { reconcileWebPushSubscription } = require('../webPush') as typeof import('../webPush');
+    await expect(reconcileWebPushSubscription()).resolves.toBe('subscribed');
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(Array.from(new Uint8Array(subscribe.mock.calls[0][0].applicationServerKey))).toEqual(urlBase64ToBytes(SERVER_KEY));
+    expect(rpc).toHaveBeenCalledWith('upsert_web_push_subscription', { p_endpoint: 'https://push.example/fresh', p_p256dh: 'pf', p_auth: 'af' });
+  });
+
+  it('RECONCILE: keeps a subscription that already uses the server key', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const unsubscribe = jest.fn();
+    const current = {
+      options: { applicationServerKey: keyBuffer(SERVER_KEY) },
+      unsubscribe,
+      toJSON: () => ({ endpoint: 'https://push.example/current', keys: { p256dh: 'pc', auth: 'ac' } }),
+    };
+    const subscribe = jest.fn();
+    const register = jest.fn().mockResolvedValue({ pushManager: { getSubscription: jest.fn().mockResolvedValue(current), subscribe } });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    mockSupabase(jest.fn().mockResolvedValue({ data: { publicKey: SERVER_KEY }, error: null }), rpc);
+
+    const { reconcileWebPushSubscription } = require('../webPush') as typeof import('../webPush');
+    await expect(reconcileWebPushSubscription()).resolves.toBe('subscribed');
+    expect(unsubscribe).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+});
+
 describe('lib/webPush — verifyServerSubscription', () => {
   function mockSupabase(overrides: { isSupabaseConfigured: boolean; rpc?: jest.Mock }) {
     jest.doMock('../supabase', () => ({

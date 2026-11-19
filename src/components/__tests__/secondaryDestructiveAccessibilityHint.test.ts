@@ -23,14 +23,11 @@ describe('secondary/icon destructive-action accessibilityHint', () => {
     expect(around).toMatch(/accessibilityHint="[^"]+"/);
   });
 
-  it('ScheduleScreen.tsx: the 🗑️ delete-rule Pressable has a non-empty accessibilityHint', () => {
-    const source = fs.readFileSync(path.resolve(__dirname, '../../screens/ScheduleScreen.tsx'), 'utf8');
-    const labelIndex = source.indexOf('accessibilityLabel={`מחיקת שעת טיול ${r.time}`}');
+  it('RoutineGrid.tsx: "מחיקת השעה מכל השבוע" has a non-empty accessibilityHint (replaced the 🗑️ rule row, 2026-11-09)', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../RoutineGrid.tsx'), 'utf8');
+    const labelIndex = source.indexOf("'מחיקת השעה מכל השבוע'");
     expect(labelIndex).toBeGreaterThan(-1);
-    const pressableStart = source.lastIndexOf('<Pressable', labelIndex);
-    const pressableEnd = source.indexOf('>', labelIndex);
-    const around = source.slice(pressableStart, pressableEnd);
-    expect(around).toMatch(/onPress={\(\) => setDeleteRuleId\(r\.id\)}/);
+    const around = source.slice(source.lastIndexOf('<Button', labelIndex), source.indexOf('/>', labelIndex));
     expect(around).toMatch(/accessibilityHint="[^"]+"/);
   });
 });

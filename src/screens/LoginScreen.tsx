@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,8 @@ import { Button } from '../components/Button';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { UserFormModal } from '../components/UserFormModal';
 import { PinEntryModal } from '../components/PinEntryModal';
+import { DeviceAccessRequestModal } from '../components/DeviceAccessRequestModal';
+import { isProfileClaimedElsewhereError } from '../lib/deviceAccess';
 import { WalkieMascot } from '../components/WalkieMascot';
 import { DEMO_FAMILY } from '../data/demoData';
 import { friendlyErrorMessage } from '../lib/errorMessages';
@@ -83,6 +85,7 @@ export function LoginScreen() {
   const staleClaimRecovered = useAuthStore((s) => s.staleClaimRecovered);
   const staleClaimUserId = useAuthStore((s) => s.staleClaimUserId);
   const clearStaleClaimNotice = useAuthStore((s) => s.clearStaleClaimNotice);
+  const reconnectToFamily = useAuthStore((s) => s.reconnectToFamily);
   // COMPLETION PASS — 7D: which profile the "התחבר מחדש כ-X" PIN flow below
   // targets. Set either from staleClaimRecovered's staleClaimUserId (this
   // device's OWN claim was superseded elsewhere) or from an ordinary
@@ -90,6 +93,11 @@ export function LoginScreen() {
   // (someone picking up their profile on a new/different device) — same
   // underlying situation, two different ways of reaching it, one PIN flow.
   const [pinReclaimUserId, setPinReclaimUserId] = useState<string | null>(null);
+  // Owner request 2026-11-03: a profile signed in on another device (often
+  // the same person in Safari before opening the home-screen shortcut)
+  // first offers "ask the family admin to approve this device"; the PIN
+  // stays available as a secondary path.
+  const [accessRequestUserId, setAccessRequestUserId] = useState<string | null>(null);
   // A removed (soft-deleted) family member must never be selectable to sign
   // in as — see FamilyUser.removedAt's doc comment. They still exist in
   // `users` so History can resolve their name/avatar.
@@ -109,22 +117,27 @@ export function LoginScreen() {
       // notice so it doesn't linger into the next time this screen shows.
       clearStaleClaimNotice();
     } catch (err) {
-      setClaimError(claimErrorMessage(err));
-      // 7D: an ordinary claim rejected because it's already claimed
-      // elsewhere is exactly the same situation as staleClaimRecovered
-      // (just discovered a different way — by tapping the name, rather than
-      // this device's own stale-session check) — offer the same PIN-reclaim
-      // path rather than a dead end.
-      const rawMessage = err instanceof Error ? err.message : (err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message ?? '') : String(err ?? ''));
-      if (rawMessage.includes('profile already claimed by another device')) {
-        setPinReclaimUserId(userId);
+      // 7D, revised 2026-11-03: a profile already signed in elsewhere opens
+      // the "ask the family admin" window (PIN as a secondary path) rather
+      // than an error banner or a PIN prompt nobody has.
+      if (isProfileClaimedElsewhereError(err)) {
+        setAccessRequestUserId(userId);
+      } else {
+        setClaimError(claimErrorMessage(err));
       }
     } finally {
       setSigningInUserId(null);
     }
   };
 
+  const handleAccessApproved = useCallback(async (userId: string) => {
+    await signIn(userId);
+    clearStaleClaimNotice();
+    setAccessRequestUserId(null);
+  }, [signIn, clearStaleClaimNotice]);
+
   const staleClaimUser = staleClaimUserId ? users.find((u) => u.id === staleClaimUserId) : null;
+  const accessRequestUser = accessRequestUserId ? users.find((u) => u.id === accessRequestUserId) : null;
   const pinReclaimUser = pinReclaimUserId ? users.find((u) => u.id === pinReclaimUserId) : null;
 
   const handlePinReclaim = async (pin: string) => {
@@ -178,10 +191,21 @@ export function LoginScreen() {
           // there are no active profiles at all to pick from, so offering
           // "+ הוספת בן משפחה" here would just be an action the server is
           // guaranteed to reject. Tell them what's actually true instead.
-          <EmptyState
-            title="אין פרופיל פעיל לבחירה"
-            subtitle="פנו למנהל המשפחה כדי להוסיף בן משפחה"
-          />
+          // Production 2026-11-03: this is also what a device sees when its
+          // session no longer belongs to the family (no profile is readable
+          // at all) — never a dead end: offer to reconnect.
+          <>
+            <EmptyState
+              title="אין פרופיל פעיל לבחירה"
+              subtitle="המכשיר לא מחובר כרגע למשפחה. מנהלי המשפחה מתחברים מחדש עם קוד למייל, ובני משפחה עם קישור ההזמנה."
+            />
+            <Button
+              label="🔑 חיבור מחדש למשפחה"
+              onPress={() => void reconnectToFamily()}
+              style={styles.addButton}
+              accessibilityLabel="חיבור מחדש למשפחה"
+            />
+          </>
         )
       ) : (
         <View style={styles.grid}>
@@ -210,7 +234,7 @@ export function LoginScreen() {
           {staleClaimUser ? (
             <RtlText
               style={styles.errorDismiss}
-              onPress={() => setPinReclaimUserId(staleClaimUser.id)}
+              onPress={() => setAccessRequestUserId(staleClaimUser.id)}
             >
               {`התחבר מחדש כ${staleClaimUser.name}`}
             </RtlText>
@@ -265,6 +289,15 @@ export function LoginScreen() {
           }
         }}
         onClose={() => setFormVisible(false)}
+      />
+
+      <DeviceAccessRequestModal
+        visible={accessRequestUserId !== null}
+        userId={accessRequestUserId}
+        userName={accessRequestUser?.name ?? ''}
+        onApproved={handleAccessApproved}
+        onUsePin={() => { setPinReclaimUserId(accessRequestUserId); setAccessRequestUserId(null); }}
+        onClose={() => setAccessRequestUserId(null)}
       />
 
       <PinEntryModal

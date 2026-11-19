@@ -3,6 +3,14 @@ import type { Walk } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
+    getSyncReplayIdentity: jest.fn(async () => {
+      const queue = require('../syncQueue');
+      return {
+        authUserId: queue.getSyncQueueAuthUserHint(),
+        profileId: queue.getSyncQueueActorHint(),
+        familyId: queue.getSyncQueueFamilyHint(),
+      };
+    }),
     getFamily: jest.fn(),
     getUsers: jest.fn().mockResolvedValue([]),
     createUser: jest.fn().mockResolvedValue(undefined),
@@ -78,13 +86,17 @@ describe('OfflineFirstRepository.queueWalksForBackgroundSync — durable, non-bl
     // setSyncQueueActorGetter (App.tsx); tests must do the same or every
     // enqueued item here would be quarantined as "untagged" instead of
     // ever being applied.
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
   });
 
   afterEach(() => {
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
   });
 
   it('resolves promptly even when the underlying remote write never settles — the caller is never blocked waiting for the network', async () => {

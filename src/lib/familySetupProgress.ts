@@ -16,6 +16,8 @@ export type FamilySetupProgress = {
   adminName?: string;
   /** Uploaded image awaiting the required dog name before a Dog row exists. */
   pendingDogPhotoUrl?: string;
+  /** Dog whose photo is pending the required dog-name save. */
+  pendingDogPhotoDogId?: string;
   /** Temporary Step 2 draft, copied to Dog.sex when the profile is saved. */
   pendingDogSex?: 'male' | 'female';
 };
@@ -34,6 +36,7 @@ export async function readFamilySetupProgress(): Promise<FamilySetupProgress | n
       ...(typeof parsed.adminUserId === 'string' ? { adminUserId: parsed.adminUserId } : {}),
       ...(typeof parsed.adminName === 'string' ? { adminName: parsed.adminName } : {}),
       ...(typeof parsed.pendingDogPhotoUrl === 'string' ? { pendingDogPhotoUrl: parsed.pendingDogPhotoUrl } : {}),
+      ...(typeof parsed.pendingDogPhotoDogId === 'string' ? { pendingDogPhotoDogId: parsed.pendingDogPhotoDogId } : {}),
       ...(parsed.pendingDogSex === 'male' || parsed.pendingDogSex === 'female' ? { pendingDogSex: parsed.pendingDogSex } : {}),
     };
   } catch {
